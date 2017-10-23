@@ -18,6 +18,10 @@ dashboardPage(
                 checkboxGroupInput("empsizeCheckbox", label = "", 
                                    choices = levels(customers$EMP_SIZE), selected = levels(customers$EMP_SIZE)[3:8])
        ),
+       menuItem("Select Turnover Size", 
+                checkboxGroupInput("turnoversizeCheckbox", label = "", 
+                                   choices = levels(customers$TURNOVER_SIZE), selected = levels(customers$TURNOVER_SIZE))
+       ),
        menuItem("Select Value Size",
                 checkboxGroupInput("infovalsizeCheckbox", label = "", 
                                    choices = levels(customers$INFO_VALUE_SIZE), selected = levels(customers$INFO_VALUE_SIZE)[4:6])
@@ -33,6 +37,12 @@ dashboardPage(
        menuItem("Select contract status", 
                 checkboxGroupInput("contractStatusCheckbox", label=NULL,
                                    choices = unique(customers$CONTRACT_STATUS), selected = c("Active","Draft") )
+       ),
+       menuItem("Product Filter", 
+                textAreaInput("productsToMatch",label="Product Codes")
+       ),
+       menuItem("Job Title filter", 
+                textAreaInput("jobsToMatch", label="Job Titles")
        ),
        actionButton("applyFilter", "Apply Filter")
     ),
@@ -57,11 +67,14 @@ dashboardPage(
       downloadButton("exportPivot", "Export Pivot")
     ),
     
-    
+    menuItem("Venn", icon=icon("cc-mastercard"),
+             menuSubItem("Create Venn", tabName = "venns")
+             #downloadButton("exportDetails", "Export details")
+    ),
     
     menuItem("Details", icon=icon("table"),
              menuSubItem("View details", icon=icon("cube"), tabName = "tableView"),
-             downloadButton("exportFull", "Export details")
+             downloadButton("exportDetails", "Export details")
     ),
     
     menuItem("Selections", icon=icon("table"),
@@ -101,7 +114,35 @@ dashboardPage(
       tabItem("customermap",
               
               fluidRow(
-                column(width = 12, 
+                
+                column(width=5,
+                       fluidRow(
+                         valueBoxOutput("customersValueBox"),
+                         valueBoxOutput("contractsValueBox"),
+                         valueBoxOutput("totalValueBox"),
+                         valueBoxOutput("APVCValueBox"),
+                         valueBoxOutput("emailValueBox"),
+                         valueBoxOutput("phoneValueBox")
+                       ),
+                       fluidRow(
+                         column(width=6,
+                            htmlOutput("empSizeDonut")
+                         ),
+                         column(width=6,
+                            htmlOutput("statusDonut")
+                         )
+                       ),
+                       fluidRow(
+                         column(width=12,
+                            #plotly::plotlyOutput("prodBar")
+                            htmlOutput("prodBar")
+                         )
+                         
+                       )
+                       
+                ), # end summary column
+                
+                column(width = 7, 
                        box(width = NULL , solidHeader = TRUE, height = 675,
                            leafletOutput("map", height = "650px"),
                            
@@ -109,8 +150,8 @@ dashboardPage(
                                          draggable = TRUE, top = 150, right = 50, left = "auto", bottom = "auto", 
                                          width = "auto", height = "auto", style = "opacity: 0.90",
                                          
-                                         actionButton("getAccountSummary", "Account Details"),
-                                         uiOutput("countsSummary")
+                                         actionButton("getAccountSummary", "Account Details")
+                                         #uiOutput("countsSummary")
                            )
                        ),
                        box(width = NULL , solidHeader = TRUE,
@@ -138,7 +179,8 @@ dashboardPage(
                            
                        )# end box
                        
-                ) # end column
+                ) # end map column
+                
               ) # end fluid row
               
           ), # end tabItem
@@ -152,6 +194,22 @@ dashboardPage(
       ),
       tabItem("viewSegments",
               div(style = 'overflow-x: scroll', DT::dataTableOutput("custSegPivot"))
+      ),
+      tabItem("venns",
+          fluidRow(
+            column(width=4,
+                   selectInput("selection1","",choices = list.files("./selections", pattern = ".RDS") ,multiple = TRUE)
+            ),
+            column(width=4,
+                   selectInput("selection2","",choices = list.files("./selections", pattern = ".RDS") ,multiple = TRUE)
+            ),
+            column(width=4,
+                   actionButton("drawVenn","Draw Venn")
+            )
+          ),
+          fluidRow(
+            plotOutput("venn", width = "700px", height="700px")
+          )
       )
       
     ) # end tabItems

@@ -3,6 +3,10 @@ library(ggmap)
 library(dplyr)
 library(reshape2)
 library(DT)
+library(stringr)
+library(plotly)
+library(VennDiagram)
+library(googleVis)
 
 source("helpe.R")
 
@@ -36,6 +40,24 @@ max_emp <- max(customers$NUMBEROFEMPLOYEES, na.rm = T)
 customers$EMP_SIZE = cut(customers$NUMBEROFEMPLOYEES,c(0,5,10,50,250,500,1000,max_emp))
 levels(customers$EMP_SIZE) = c("0-5","6-10","11-50","51-250","251-500","501-1000","1000+")
 #customers$EMP_SIZE <- as.character(customers$EMP_SIZE)
+
+#' Add NA as a level in the factor
+levels_without_na <- levels(customers$EMP_SIZE)
+customers$EMP_SIZE <- addNA(customers$EMP_SIZE)
+levels(customers$EMP_SIZE) <- c(levels_without_na, "Unknown")
+
+
+#' compute annual revenue categories
+max_turnover <- max(customers$ANNUALREVENUE, na.rm = T)
+customers$TURNOVER_SIZE = cut(customers$ANNUALREVENUE, c(0,100000,500000,1000000,5000000,10000000,max_turnover))
+levels(customers$TURNOVER_SIZE) = c("0-100K","100K-500L","500K-1M","1M-5M","5M-10M","10M+")
+
+
+levels_without_na <- levels(customers$TURNOVER_SIZE)
+customers$TURNOVER_SIZE <- addNA(customers$TURNOVER_SIZE)
+levels(customers$TURNOVER_SIZE) <- c(levels_without_na, "Unknown")
+
+
 
 
 #' compute info value size categories
@@ -91,7 +113,7 @@ unkown.coods.df <- data.frame(location = unknown.addr,
 }
 
 
-customers <- readRDS("data/customers_anonymized.RDS")
+customers <- readRDS("data/customers.RDS")
 
 #' accounts one record per sold to id for plotting on map
 # accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]

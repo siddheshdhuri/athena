@@ -205,3 +205,21 @@ calc.penetration <- function(cust , univ){
 is.between <- function(x, a, b) {
   x > a & x < b
 }
+
+#' function to find string contains multiple strings
+#' 
+'%contains%' <- function(column ,toMatch) {
+  x <- TRUE
+  if(nchar(toMatch) > 1){
+    toMatch <- toMatch %>% gsub(pattern=" ",replacement="") %>% gsub(pattern=",",replacement="|")
+    
+    x <- stringr::str_detect(column, regex(toMatch, ignore_case = T))
+  }
+  
+  return(x)
+}
+
+
+
+
+
