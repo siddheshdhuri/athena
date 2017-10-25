@@ -15,7 +15,7 @@ if(FALSE){
 customers <- data.table::fread("CRONERI_DATA.csv")
 coordinates <- data.table::fread("ukpostcodes.csv")
 
-customers <- readRDS("data/customers.RDS")
+customers <- readRDS("data/customers_anonymized.RDS")
 coordinates <- readRDS("data/ukpostcodes.RDS")
 
 customers <- merge(customers,coordinates,by.x = "SOLDTO_POSTCODE", by.y ="postcode",all.x = TRUE)
