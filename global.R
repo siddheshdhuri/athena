@@ -7,12 +7,107 @@ library(stringr)
 library(plotly)
 library(VennDiagram)
 library(googleVis)
+library(rJava)
+library(RJDBC)
+
+
+# initial_seg_cols = c("CCH_BUSINESS_TYPE","ACCOUNT_SFDC_ID","SOLDTO_GUO_NAME","SOLDTO_ADDRESS","SOLDTO_TOWN","SOLDTO_POSTCODE",
+#                      "INDUSTRY","SOLDTO_EMAIL","SOLDTO_PHONE", "CONTRACT_SHIPTOID","SHIPTO_FIRST_NAME","SHIPTO_LAST_NAME","SHIPTO_JOB_TITLE",
+#                      "SHIPTO_EMAIL","SHIPTO_PHONE","LATEST_RENEWAL","EARLIEST_RENEWAL","STATUS","CCH_INFO_VALUE","CRONER_INFO_VALUE")
+
+initial_seg_cols = c("ACCOUNT_SFDC_ID","SOLDTO_GUO_NAME","SOLDTO_POSTCODE",
+                     "LATEST_RENEWAL","EARLIEST_RENEWAL","STATUS","CCH_INFO_VALUE","CRONER_INFO_VALUE")
+
+
+if (FALSE) {
+  
+  #'#####################################################################################
+  #' intitialise settings
+  Sys.setenv(JAVA_HOME='/usr/lib/jvm/java-8-openjdk-amd64')
+  options(java.parameters="-Xmx2g")
+  
+  .jinit()
+  
+  jdbcDriver <- JDBC(driverClass = "oracle.jdbc.OracleDriver",
+                     classPath = "/usr/lib/oracle/12.1/client64/lib/ojdbc6.jar")
+  
+  jdbcConnection <- dbConnect(jdbcDriver, "jdbc:oracle:thin:@//ukkinORA03x.wkuk.net:1521/WKUKDW",
+                              "REPO", "INTERVENTION5")
+  
+  #'#####################################################################################
+  
+  
+  #' current customers query
+  cust_query <- "WITH LIVE_CUST_DETAILS AS (
+  SELECT 
+  CT.SOLDTOID__C AS CONTRACT_SOLDTOID, 
+  CT.SHIPTOID__C AS CONTRACT_SHIPTOID,
+  CT.BILL_TO_ID__C AS CONTRACT_BILLTOID,
+  CT.PAYER_ID__C AS CONTRACT_PAYERID, 
+  CT.ID AS CONTRACT_SFDC_ID, CT.CONTRACTNUMBER__C AS CONTRACT_SAP_ID,
+  CT.AMOUNT__C AS CONTRACT_VALUE, CT.STATUS__C AS CONTRACT_STATUS,
+  CT.DESCRIPTION__C AS CONTRACT_DESCRIPTION,
+  TO_CHAR(CT.STARTDATE__C,'YYYYMMDD') AS CONTRACT_STARTDATE, 
+  TO_CHAR(CT.ENDDATE__C,'YYYYMMDD') AS CONTRACT_ENDDATE,
+  P.PRODUCT_CODE, P.PRODUCT_FAMILY, P.BRAND, P.BUSINESS_UNIT, P.\"Subs_One-Off\" AS SUBS_ONE_OFF,
+  A.ID AS ACCOUNT_SFDC_ID, A.SAP_CLIENT_NUMBER__C AS ACCOUNT_SAP_ID, 
+  (A.TOTALCCHINFORMATIONVALUE + A.TOTALCRONERINFORMATIONVALUE) AS ACCOUNT_INFO_VALUE,
+  soldto.CCH_BUSINESS_TYPE, soldto.BUSINESS_TYPE, A.NUMBEROFEMPLOYEES, A.ANNUALREVENUE, A.INDUSTRY,
+  REPLACE(soldto.GUO_NAME,',',';') AS SOLDTO_GUO_NAME,
+  REPLACE(soldto.ADDRESS,',',';') AS SOLDTO_ADDRESS, 
+  REPLACE(soldto.TOWN,',',';') AS SOLDTO_TOWN, 
+  REPLACE(soldto.POST_CODE,',',';') AS SOLDTO_POSTCODE,
+  soldto.EMAIL AS SOLDTO_EMAIL, soldto.TELEPHONE SOLDTO_PHONE,
+  REPLACE(shipto.FIRST_NAME,',',';') AS SHIPTO_FIRST_NAME,
+  REPLACE(shipto.LAST_NAME,',',';') AS SHIPTO_LAST_NAME,
+  REPLACE(shipto.JOB_TITLE,',',';') AS JOB_TITLE,
+  REPLACE(shipto.ADDRESS,',',';') AS SHIPTO_ADDRESS, 
+  REPLACE(shipto.TOWN,',',';') AS SHIPTO_TOWN, 
+  REPLACE(shipto.POST_CODE,',',';') AS SHIPTO_POSTCODE,
+  shipto.EMAIL AS SHIPTO_EMAIL, shipto.TELEPHONE SHIPTO_PHONE,
+  A.TOTALCCHINFORMATIONVALUE AS CCH_INFO_VALUE,
+  A.TOTALCRONERINFORMATIONVALUE AS CRONER_INFO_VALUE
+  FROM ODS.SFDC_CONTRACT CT, ODS.SFDC_ACCOUNT A, ODS.SFDC_CONTRACT_LINEITEM LI,
+  BUSINESS_ANALYSIS.CUSTOMER_D SOLDTO, 
+  BUSINESS_ANALYSIS.CUSTOMER_D SHIPTO,
+  BUSINESS_ANALYSIS.PRODUCT_D P
+  WHERE UPPER(CT.CATEGORY__C) = 'INFORMATION'
+  AND CT.ACCOUNTID__C = A.ID
+  AND CT.ID = LI.CONTRACTID__C
+  AND P.PRODUCT_CODE = LI.PRODUCTCODE__C
+  AND CT.ENDDATE__C > (SYSDATE - 365*2)
+  /*AND UPPER(CT.STATUS__C) = 'ACTIVE'
+  AND (A.TOTALCCHINFORMATIONVALUE + A.TOTALCRONERINFORMATIONVALUE) > 0*/
+  AND SOLDTO.BP_ID = CT.SOLDTOID__C
+  AND SHIPTO.BP_ID = CT.SHIPTOID__C
+  )
+  SELECT *
+  FROM LIVE_CUST_DETAILS LCD"
+
+
+cust_query <- gsub("\n|\t"," ",cust_query)
+
+
+t1 <- Sys.time()
+customers <- RJDBC::dbGetQuery(jdbcConnection, cust_query)
+t2 <- Sys.time()
+
+print(paste("time taken : ",t2-t1))
+  
+}
+
 
 source("helpe.R")
 
 if(FALSE){
 
-customers <- data.table::fread("CRONERI_DATA.csv")
+  x <- readLines("data/CUST_DATA2.csv")
+  
+customers <- data.table::fread("data/CUST_DATA2.csv")
+
+
+
+
 coordinates <- data.table::fread("ukpostcodes.csv")
 
 customers <- readRDS("data/customers.RDS")
@@ -20,18 +115,17 @@ coordinates <- readRDS("data/ukpostcodes.RDS")
 
 customers <- merge(customers,coordinates,by.x = "SOLDTO_POSTCODE", by.y ="postcode",all.x = TRUE)
 
-customers$CONTRACT_STARTDATE <- as.Date(as.character(customers$CONTRACT_STARTDATE), "%Y%m%d") 
-customers$CONTRACT_ENDDATE <- as.Date(as.character(customers$CONTRACT_ENDDATE), "%Y%m%d") 
+customers$CONTRACT_STARTDATE <- as.Date(as.character(customers$CONTRACT_STARTDATE), "%Y-%m-%d") 
+customers$CONTRACT_ENDDATE <- as.Date(as.character(customers$CONTRACT_ENDDATE), "%Y-%m-%d") 
 
 customer_renewals <- customers %>% 
-                      group_by(CONTRACT_SOLDTOID) %>% 
+                      group_by(ACCOUNT_SFDC_ID) %>% 
                       summarise(EARLIEST_RENEWAL = min(CONTRACT_ENDDATE),
                                 LATEST_RENEWAL = max(CONTRACT_ENDDATE))
 
 customer_renewals$STATUS <- ifelse(customer_renewals$LATEST_RENEWAL >= Sys.Date(), "LIVE", "LAPSED")
 
-customers <- merge(customers,customer_renewals,by = "CONTRACT_SOLDTOID", all.x = TRUE)
-
+customers <- merge(customers,customer_renewals,by = "ACCOUNT_SFDC_ID", all.x = TRUE)
 
 
 
@@ -113,7 +207,7 @@ unkown.coods.df <- data.frame(location = unknown.addr,
 }
 
 
-customers <- readRDS("data/customers.RDS")
+customers <- readRDS("data/customers2.RDS")
 
 #' accounts one record per sold to id for plotting on map
 # accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]

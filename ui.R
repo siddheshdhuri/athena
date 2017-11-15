@@ -4,7 +4,7 @@ library(leaflet)
 library(shinyjs)
 
 dashboardPage(
-  dashboardHeader(title = "Customer view"),
+  dashboardHeader(title = "ATHENA"),
   
   
   dashboardSidebar(
@@ -16,7 +16,7 @@ dashboardPage(
     menuItem("Filters", icon=icon("filter"),
        menuItem("Select Emp Size", 
                 checkboxGroupInput("empsizeCheckbox", label = "", 
-                                   choices = levels(customers$EMP_SIZE), selected = levels(customers$EMP_SIZE)[3:8])
+                                   choices = levels(customers$EMP_SIZE), selected = levels(customers$EMP_SIZE)[5])
        ),
        menuItem("Select Turnover Size", 
                 checkboxGroupInput("turnoversizeCheckbox", label = "", 
@@ -24,7 +24,7 @@ dashboardPage(
        ),
        menuItem("Select Value Size",
                 checkboxGroupInput("infovalsizeCheckbox", label = "", 
-                                   choices = levels(customers$INFO_VALUE_SIZE), selected = levels(customers$INFO_VALUE_SIZE)[4:6])
+                                   choices = levels(customers$INFO_VALUE_SIZE), selected = levels(customers$INFO_VALUE_SIZE))
        ),
        menuItem("Select Type of Business",
                 checkboxGroupInput("businessTypeCheckbox", label = "", 
@@ -47,24 +47,26 @@ dashboardPage(
        actionButton("applyFilter", "Apply Filter")
     ),
     
-    menuItem("Customer Contract Pivot", icon=icon("cube"),
+    menuItem("Segment Analysis", icon=icon("cube"),
       
       #menuItem("View Pivot", icon=icon("cube"),  tabName = "custcontractView"),
       
       menuItem("View Segments", tabName = "viewSegments", icon = icon("cubes")),
       
       menuItem("Set Criteria", tabName = "setCriteria", icon = icon("cubes"),
-               selectInput("xaxis","Summarise By",choices = colnames(customers) ,multiple = TRUE),
-               selectInput("yaxis","Transpose Column",choices = c("NONE","BUSINESS_UNIT", "BRAND","PRODUCT_FAMILY",
-                                                                  "EMP_SIZE", "INFO_VALUE_SIZE")
+               selectInput("xaxis","Summarise By",choices = colnames(customers) ,multiple = TRUE, selected=initial_seg_cols),
+               selectInput("yaxis","Transpose Column",choices = c("NONE","BUSINESS_UNIT", "BRAND","PRODUCT_FAMILY", "PRODUCT_CODE",
+                                                                  "EMP_SIZE", "INFO_VALUE_SIZE", "TURNOVER_SIZE")
                            ,multiple = FALSE, selected = "NONE"),
                
                conditionalPanel(condition = "input.yaxis != 'NONE'",
                                 selectInput("valuevar","Value",choices = c("Customers","Products","Contracts", "TOV","APVC","AOV","MOV"), 
-                                            multiple = FALSE, selected = "NONE"))
+                                            multiple = FALSE, selected = "NONE")),
+               actionButton("drawTable", "Draw Table")
                
       ),
-      downloadButton("exportPivot", "Export Pivot")
+      tags$br(),
+      downloadButton("exportPivot", "Export Table")
     ),
     
     menuItem("Venn", icon=icon("cc-mastercard"),
@@ -90,7 +92,7 @@ dashboardPage(
     tags$br(),
     tags$br(),
     
-    textInput("searchTerm", label = "Find by name"),
+    textAreaInput("searchTerm", label = "Find by name"),
     actionButton("filterByName", label = "Find")
     
     )
@@ -153,35 +155,39 @@ dashboardPage(
                                          actionButton("getAccountSummary", "Account Details")
                                          #uiOutput("countsSummary")
                            )
-                       ),
-                       box(width = NULL , solidHeader = TRUE,
-                           fluidRow(
-                             column(width=3,
-                                    shiny::uiOutput("accountSummary")
-                             ),
-                             column(width=5,
-                                    #div(style = 'overflow-x: scroll', DT::dataTableOutput("contactsAtAccount"))
-                                    DT::dataTableOutput("contactsAtAccount")
-                             ),
-                             column(width=4,
-                                    #div(style = 'overflow-x: scroll', DT::dataTableOutput("productsAtAccount")) 
-                                    DT::dataTableOutput("productsAtAccount")
-                             )
-                           ),
-                           fluidRow(
-                             column(width=2),
-                             column(width=10,
-                                    #div(style = 'overflow-x: scroll', DT::dataTableOutput("contractsAtAccount"))
-                                    DT::dataTableOutput("contractsAtAccount")
-                             ) # end column
-                             
-                           ) # end fluid row
-                           
-                       )# end box
+                       )
                        
                 ) # end map column
                 
-              ) # end fluid row
+              ), # end fluid row
+              fluidRow(
+                
+                box(width = NULL , solidHeader = TRUE,
+                    fluidRow(
+                      column(width=3,
+                             shiny::uiOutput("accountSummary")
+                      ),
+                      column(width=5,
+                             #div(style = 'overflow-x: scroll', DT::dataTableOutput("contactsAtAccount"))
+                             DT::dataTableOutput("contactsAtAccount")
+                      ),
+                      column(width=4,
+                             #div(style = 'overflow-x: scroll', DT::dataTableOutput("productsAtAccount")) 
+                             DT::dataTableOutput("productsAtAccount")
+                      )
+                    ),
+                    fluidRow(
+                      column(width=2),
+                      column(width=10,
+                             #div(style = 'overflow-x: scroll', DT::dataTableOutput("contractsAtAccount"))
+                             DT::dataTableOutput("contractsAtAccount")
+                      ) # end column
+                      
+                    ) # end fluid row
+                    
+                )# end box
+                
+              )
               
           ), # end tabItem
       

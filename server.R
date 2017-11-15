@@ -125,11 +125,13 @@ shinyServer(function(session, input, output) {
     selectedAccount <- reactive.values$selectedCust
     
     output$accountSummary <- renderUI( list(tags$h1( selectedAccount$SOLDTO_GUO_NAME[1] ),
-                                            tags$b( selectedAccount$CONTRACT_SOLDTOID[1] ),
-                                            tags$h2( paste("Information Value: £",selectedAccount$ACCOUNT_INFO_VALUE[1]) ),
-                                            tags$h2( paste("Software Value: £",selectedAccount$ACCOUNT_SW_VALUE[1]) ),
-                                            tags$h3( paste("Earliest Renewal: ",selectedAccount$EARLIEST_RENEWAL[1])),
-                                            tags$h3( paste("Latest Renewal: ",selectedAccount$LATEST_RENEWAL[1]))
+                                            tags$b( paste( "SalesForce Id:", selectedAccount$ACCOUNT_SFDC_ID[1])),
+                                            tags$br(),
+                                            tags$b( paste( "SAP Id:", paste(unique(selectedAccount$CONTRACT_SOLDTOID),collapse = ", ")) ),
+                                            tags$h3( paste("CCH Info. Value: £",selectedAccount$CCH_INFO_VALUE[1]) ),
+                                            tags$h3( paste("Croner Info. Value: £",selectedAccount$CRONER_INFO_VALUE[1]) ),
+                                            tags$h4( paste("Earliest Renewal: ",selectedAccount$EARLIEST_RENEWAL[1])),
+                                            tags$h4( paste("Latest Renewal: ",selectedAccount$LATEST_RENEWAL[1]))
                                             ) )
     
     accountContracts <- selectedAccount[!duplicated(selectedAccount$CONTRACT_SAP_ID) ,
@@ -137,7 +139,7 @@ shinyServer(function(session, input, output) {
                                           "CONTRACT_VALUE","CONTRACT_STARTDATE","CONTRACT_ENDDATE")]
     
     accountProducts <- selectedAccount[!duplicated(selectedAccount$PRODUCT_CODE) ,
-                                       c("PRODUCT_CODE","PRODUCT_DESCRIPTION")]
+                                       c("PRODUCT_CODE","PRODUCT_FAMILY")]
     
     accountContacts <- selectedAccount[!duplicated(selectedAccount$CONTRACT_SHIPTOID) ,
                                        c("SHIPTO_FIRST_NAME","SHIPTO_LAST_NAME", "SHIPTO_EMAIL", "SHIPTO_PHONE")]
@@ -171,7 +173,7 @@ shinyServer(function(session, input, output) {
     #' Value box showing number of users
     output$customersValueBox <- renderValueBox({
       valueBox(
-        length(unique(selectedCustomers$CONTRACT_SOLDTOID)), "Accounts", icon = icon("building"),
+        length(unique(selectedCustomers$ACCOUNT_SFDC_ID)), "Accounts", icon = icon("building"),
         color = "teal"
       )
     })
@@ -347,17 +349,26 @@ shinyServer(function(session, input, output) {
       prodCodes <- isolate(input$productsToMatch)
       jobTitles <- isolate(input$jobsToMatch)
       
-      #' apply filter to global customers df
       customers <- customers %>%
-        dplyr::filter( EMP_SIZE %in% empSizes ) %>%
-        dplyr::filter( TURNOVER_SIZE %in% turnoverSizes ) %>%
-        dplyr::filter( INFO_VALUE_SIZE %in% infovalsizes ) %>%
-        dplyr::filter( CCH_BUSINESS_TYPE %in% businessTypes ) %>%
-        dplyr::filter( STATUS %in% custStatus ) %>%
-        dplyr::filter( CONTRACT_STATUS %in% contractStatus ) %>%
-        dplyr::filter( PRODUCT_CODE %contains% prodCodes) %>%
-        dplyr::filter( JOB_TITLE %contains% jobTitles )
+        dplyr::filter( EMP_SIZE %in% empSizes & 
+                         TURNOVER_SIZE %in% turnoverSizes &
+                         INFO_VALUE_SIZE %in% infovalsizes & 
+                         CCH_BUSINESS_TYPE %in% businessTypes &
+                         STATUS %in% custStatus & 
+                         CONTRACT_STATUS %in% contractStatus &
+                         PRODUCT_CODE %contains% prodCodes &
+                         SHIPTO_JOB_TITLE %containswithspace% jobTitles )
       
+      #' apply filter to global customers df
+      # customers <- customers %>%
+      #   dplyr::filter( EMP_SIZE %in% empSizes ) %>%
+      #   dplyr::filter( TURNOVER_SIZE %in% turnoverSizes ) %>%
+      #   dplyr::filter( INFO_VALUE_SIZE %in% infovalsizes ) %>%
+      #   dplyr::filter( CCH_BUSINESS_TYPE %in% businessTypes ) %>%
+      #   dplyr::filter( STATUS %in% custStatus ) %>%
+      #   dplyr::filter( CONTRACT_STATUS %in% contractStatus ) %>%
+      #   dplyr::filter( PRODUCT_CODE %contains% prodCodes) %>%
+      #   dplyr::filter( SHIPTO_JOB_TITLE %containswithspace% jobTitles )
       
       accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]
       
@@ -377,18 +388,26 @@ shinyServer(function(session, input, output) {
   #' 
   observeEvent(input$filterByName,{
     
-    searchterm <- input$searchTerm
-    customers <- reactive.values$detailsdata
-    
-    customers <- customers %>%
-      dplyr::filter( grepl(pattern = searchterm, x = customers$SOLDTO_GUO_NAME, ignore.case = T) )
-    
-    reactive.values$detailsdata <- customers
-    
-    accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]
-    
-    redrawMap(accounts)
-    
+    withProgress(message="Findinng accounts by name", {
+      
+      searchterm <- input$searchTerm
+      customers <- reactive.values$detailsdata
+      print(searchterm)
+      customers <- customers %>%
+        dplyr::filter( SOLDTO_GUO_NAME %containswithspace% searchterm )
+      
+      #dplyr::filter( grepl(pattern = searchterm, x = customers$SOLDTO_GUO_NAME, ignore.case = T) )
+      
+      if(nrow(customers) < 1) {
+        return(NULL)
+      }
+      
+      reactive.values$detailsdata <- customers
+      
+      accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]
+      
+      redrawMap(accounts)
+    })
     
   })
   
@@ -440,21 +459,25 @@ shinyServer(function(session, input, output) {
   #' #########################################################
   #' Customer Segment Pivot
   #' 
-  output$custSegPivot <- DT::renderDataTable({
+  observeEvent(input$drawTable, {
     
-    xaxis <- input$xaxis
-    yaxis <- input$yaxis
-    valuevar <- input$valuevar
-    
-    customers <- reactive.values$detailsdata
-    customers <- customers[ !duplicated(customers$CONTRACT_SFDC_ID) , ]
-    
-    display.table <<- withProgress(message = "in progress",
-                                   detail = "This may take a while...",{
-                                     getSummaryData(customers, xaxis, yaxis, valuevar)
-                                   })
-    
-    return(display.table)
+    output$custSegPivot <- DT::renderDataTable({
+      
+      xaxis <- isolate(input$xaxis)
+      yaxis <- isolate(input$yaxis)
+      valuevar <- isolate(input$valuevar)
+      
+      customers <- reactive.values$detailsdata
+      customers <- customers[ !duplicated(customers$CONTRACT_SFDC_ID) , ]
+      
+      display.table <<- withProgress(message = "in progress",
+                                     detail = "This may take a while...",{
+                                       getSummaryData(customers, xaxis, yaxis, valuevar)
+                                     })
+      
+      return(display.table)
+      
+    })
     
   })
   
@@ -471,7 +494,7 @@ shinyServer(function(session, input, output) {
       
       data <- reactive.values$detailsdata
       
-      data <- data[ !duplicated(x$CONTRACT_SHIPTOID), ]
+      data <- data[ !duplicated(data$CONTRACT_SHIPTOID), ]
       
       data <- sapply(data,as.character)
       data[is.na(data)] <- ""
@@ -574,12 +597,12 @@ shinyServer(function(session, input, output) {
       selection1 <- readRDS(paste0("selections/",selection1))
       selection2 <- readRDS(paste0("selections/",selection2))
       
-      only_sel1 <- setdiff(unique(selection1$CONTRACT_SOLDTOID), unique(selection2$CONTRACT_SOLDTOID))
-      only_sel2 <- setdiff(unique(selection2$CONTRACT_SOLDTOID), unique(selection1$CONTRACT_SOLDTOID))
+      only_sel1 <- setdiff(unique(selection1$ACCOUNT_SFDC_ID), unique(selection2$ACCOUNT_SFDC_ID))
+      only_sel2 <- setdiff(unique(selection2$ACCOUNT_SFDC_ID), unique(selection1$ACCOUNT_SFDC_ID))
       
-      sel1_and_sel2 <- intersect(unique(selection1$CONTRACT_SOLDTOID), unique(selection2$CONTRACT_SOLDTOID))
+      sel1_and_sel2 <- intersect(unique(selection1$ACCOUNT_SFDC_ID), unique(selection2$ACCOUNT_SFDC_ID))
       
-      sel1_union_sel2 <- union(unique(selection1$CONTRACT_SOLDTOID), unique(selection2$CONTRACT_SOLDTOID))
+      sel1_union_sel2 <- union(unique(selection1$ACCOUNT_SFDC_ID), unique(selection2$ACCOUNT_SFDC_ID))
       
       
       print(paste(" only selection 1:", length(only_sel1)))

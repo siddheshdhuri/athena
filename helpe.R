@@ -7,9 +7,9 @@ getAggData <- function(aggBy, data){
   
   agg.data <- data %>%
     group_by_(.dots = agg.by) %>%
-    select(SOLDTO_GUO_NAME, CONTRACT_SOLDTOID,  CONTRACT_SAP_ID, PRODUCT_CODE, PRODUCT_FAMILY ,CONTRACT_VALUE, NUMBEROFEMPLOYEES, ANNUALREVENUE) %>%
+    select(SOLDTO_GUO_NAME, ACCOUNT_SFDC_ID, CONTRACT_SOLDTOID,  CONTRACT_SAP_ID, PRODUCT_CODE, PRODUCT_FAMILY ,CONTRACT_VALUE, NUMBEROFEMPLOYEES, ANNUALREVENUE) %>%
     summarise(
-      Customers = n_distinct(CONTRACT_SOLDTOID),
+      Customers = n_distinct(ACCOUNT_SFDC_ID),
       Contracts = n_distinct(CONTRACT_SAP_ID),
       Products = n_distinct(PRODUCT_CODE),
       ProdFamilies = n_distinct(PRODUCT_FAMILY),
@@ -208,14 +208,33 @@ is.between <- function(x, a, b) {
 
 #' function to find string contains multiple strings
 #' 
-'%contains%' <- function(column ,toMatch) {
+'%containswithspace%' <- function(column ,toMatch) {
   x <- TRUE
   if(nchar(toMatch) > 1){
-    toMatch <- toMatch %>% gsub(pattern=" ",replacement="") %>% gsub(pattern=",",replacement="|")
     
+    toMatch <- paste0("\\b",gsub(toMatch, pattern="\\n$",replacement=""),"\\b") %>% 
+                gsub(pattern="\\n",replacement="\\\\b|\\\\b") %>% gsub(pattern="\\s*,\\s*",replacement="\\\\b|\\\\b")
+    print(toMatch)
     x <- stringr::str_detect(column, regex(toMatch, ignore_case = T))
   }
   
+  return(x)
+}
+
+#' function to find string contains multiple strings
+#'
+'%contains%' <- function(column ,toMatch) {
+  x <- TRUE
+  if(nchar(toMatch) > 1){
+    toMatch <- toMatch %>% gsub(pattern="\\n$",replacement="")
+      gsub(pattern="\\s+",replacement=" ") %>% 
+      gsub(pattern=" ",replacement="|") %>% 
+      gsub(pattern="\\n",replacement="|") %>%
+      gsub(pattern="\\s*,\\s*",replacement="|")
+    
+    x <- stringr::str_detect(column, regex(toMatch, ignore_case = T))
+  }
+
   return(x)
 }
 
