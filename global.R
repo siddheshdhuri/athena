@@ -110,7 +110,7 @@ customers <- data.table::fread("data/CUST_DATA2.csv")
 
 coordinates <- data.table::fread("ukpostcodes.csv")
 
-customers <- readRDS("data/customers.RDS")
+customers <- readRDS("data/customers_anonymized.RDS")
 coordinates <- readRDS("data/ukpostcodes.RDS")
 
 customers <- merge(customers,coordinates,by.x = "SOLDTO_POSTCODE", by.y ="postcode",all.x = TRUE)
