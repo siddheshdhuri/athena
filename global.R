@@ -207,7 +207,7 @@ unkown.coods.df <- data.frame(location = unknown.addr,
 }
 
 
-customers <- readRDS("data/customers2.RDS")
+customers <- readRDS("data/customers_anonymized.RDS")
 
 #' accounts one record per sold to id for plotting on map
 # accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]
@@ -244,3 +244,55 @@ redrawMap <- function(accounts, colorBy = NULL){
   })
   
 }
+
+# Code to anonymize customers data
+
+if(FALSE) {
+  customers$CONTRACT_DESCRIPTION <- ""
+  customers$CONTRACT_DESCRIPTION <- paste0(customers$CONTRACT_DESCRIPTION, c("Outsourced Services contract", "Software Development contract", "Protein Database License contract",
+                                                                             "Medical Information Subscription contract", "Clinical Research contract", "Consultancy services contract",
+                                                                             "Drugs Database Subscription contract ", "Adverse Event DB contract", "Protein interaction network contract",
+                                                                             "Metabolic Pathways Map contract", "Genomics Sequence Service contract", "Protein Network Database contract"))
+  customers$PRODUCT_CODE <- ""
+  customers$PRODUCT_CODE <- paste0(customers$PRODUCT_CODE, c("OS101","SD201", "PR301", "MIS001", "CR301", "CS201", "DRDB001","AEDB201",
+                                                             "PIN001","MPM201","GSS101", "PNDB101"))
+  
+  customers$PRODUCT_FAMILY <- ""
+  customers$PRODUCT_FAMILY <- paste0(customers$PRODUCT_FAMILY, c("Service", "Consultancy","Software", "Information" , "Service", "Consultancy", "Information", "Information",
+                                                                 "Software", "Software", "Service", "Information"))
+  
+  customers$BRAND  <- ""
+  customers$BRAND  <- paste0(customers$BRAND, c("InfoServ", "InfoSoft", "InfoSoft", "InfoServ","InfoServ", "InfoSoft", "InfoServ"))
+  
+  customers$BUSINESS_UNIT <- ""
+  customers$BUSINESS_UNIT <- paste0(customers$BUSINESS_UNIT, c("Information", "Software", "Consultancy"))
+  
+  
+  customers$SOLDTO_GUO_NAME <- ""
+  customers$SOLDTO_GUO_NAME <- paste0(customers$SOLDTO_GUO_NAME, c("Big Pharma Company", "Medical Device Company", "Clinical Research Org", "Medical Research Company",
+                                                                   "Stemcell research company", "Pharma Manufacturer", "Drug API Company", "Generic Drug Manufacturer", 
+                                                                   "Biotech company", "Pharma marketing company", "Oncology Researcg Institute", "Medicine University",
+                                                                   "Vaccines company", "Cosmetics research company"))
+  
+  
+  
+  customers$SOLDTO_EMAIL <- ""
+  customers$SOLDTO_EMAIL <- paste0(customers$SOLDTO_EMAIL, c("info@BigPharma.com", "info@MedicalDevice.com", "info@ClinicalResearch.Org", "info@MedicalResearch.Com",
+                                                             "info@Stemcellresearch.com", "info@PharmaManufacturer.com", "info@DrugAPI.Com", "info@GenericDrugManufacturer.com", 
+                                                             "info@Biotech.com", "info@Pharmamarketing.com", "info@OncologyResearcg.org", "info@MedicineUniversity.edu",
+                                                             "info@Vaccines.com", "info@Cosmeticsresearch.com"))
+  
+  
+  customers$SHIPTO_FIRST_NAME <- ""
+  customers$SHIPTO_FIRST_NAME <- paste0(customers$SHIPTO_FIRST_NAME, c("Jake","Jay","Joy","Justin", "Jenny","John", "Jeffery", "Jack","Jamie","Jane","Jim"))
+  
+  customers$SHIPTO_LAST_NAME <- ""
+  customers$SHIPTO_LAST_NAME <- paste0(customers$SHIPTO_LAST_NAME, c("Doe", "Smith", "Jackson", "Wilson", "Sanders","Williams", "North","Cole", "Cooper"))
+  
+  customers$SHIPTO_EMAIL <- ""
+  customers$SHIPTO_EMAIL <- paste0(customers$SHIPTO_FIRST_NAME,".",customers$SHIPTO_FIRST_NAME,"@mail.com")
+  
+  
+}
+
+
