@@ -13,34 +13,42 @@ shinyServer(function(session, input, output) {
   reactive.values$selectedCust <- NULL
   reactive.values$detailsdata <- customers
   reactive.values$pivot <- NULL
+  reactive.values$selectedSet <- NULL
+  
+  data_of_click <- reactiveValues(clickedMarker = list())
+  
+  
+  coordinates_df <- NULL
+  
   
   ############################## - Start Customer Map - #############################
   #' Map
   #'
   output$map <- renderLeaflet({
     
-    accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]
-    
-    #' set NA account_values to zero
-    accounts$ACCOUNT_INFO_VALUE[is.na(accounts$ACCOUNT_INFO_VALUE)] <- 0
-    
-    has.cood.index <-  complete.cases(accounts[,c("longitude","latitude")])
-    
-    has.cood.account <- accounts[has.cood.index,]
-    has.cood.account$RADIUS <- scales::rescale(has.cood.account$ACCOUNT_INFO_VALUE, to = c(8,60))
+    #' create df with complete coodinates and radius variable that
+    #' can be used to plot data
+    has.cood.account <- maputils::getMapPlotDF(customers)
     
     #' keep filtered
-    empSizes <- isolate(input$empsizeCheckbox)
-    infovalsizes <- isolate(input$infovalsizeCheckbox)
-    businessTypes <- isolate(input$businessTypeCheckbox)
+    # empSizes <- isolate(input$empsizeCheckbox)
+    # infovalsizes <- isolate(input$infovalsizeCheckbox)
+    # businessTypes <- isolate(input$businessTypeCheckbox)
+    # 
+    # has.cood.account <- has.cood.account %>%
+    #   dplyr::filter( EMP_SIZE %in% empSizes ) %>%
+    #   dplyr::filter( INFO_VALUE_SIZE %in% infovalsizes ) %>%
+    #   dplyr::filter( CCH_BUSINESS_TYPE %in% businessTypes ) %>%
+    #   dplyr::filter( STATUS %in% "LIVE" )
     
-    has.cood.account <- has.cood.account %>%
-      dplyr::filter( EMP_SIZE %in% empSizes ) %>%
-      dplyr::filter( INFO_VALUE_SIZE %in% infovalsizes ) %>%
-      dplyr::filter( CCH_BUSINESS_TYPE %in% businessTypes ) %>%
-      dplyr::filter( STATUS %in% "LIVE" )
     
-    pal <- colorFactor(c("blue","black"), domain = has.cood.account$STATUS)
+    #' ###
+    coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)
+    
+    #' sales reps coordinates
+    salesreps <- readRDS("data/salesreps.RDS")
+    
+    pal <- colorFactor(tol21rainbow, domain = has.cood.account[[input$colorBy]])
     
     map <- leaflet(has.cood.account) %>%
       addTiles() %>%
@@ -48,7 +56,7 @@ shinyServer(function(session, input, output) {
       addCircleMarkers(
         lng = ~longitude,
         lat = ~latitude,
-        color = ~pal(STATUS),
+        color = ~pal(has.cood.account[[input$colorBy]]),
         stroke = TRUE, weight = 2,
         opacity = 0.6,
         radius = ~RADIUS,
@@ -57,10 +65,31 @@ shinyServer(function(session, input, output) {
         options = list(riseOnHover = TRUE)
         #clusterOptions = markerClusterOptions()
       ) %>%
-      addLegend("bottomleft",pal=pal, values=~STATUS, layerId = "colorLegend")
+      addLegend("bottomleft",pal=pal, values=has.cood.account[[input$colorBy]], layerId = "colorLegend") %>%
+      addDrawToolbar(
+        targetGroup='Selected',
+        polylineOptions=FALSE,
+        markerOptions = FALSE,
+        polygonOptions = drawPolygonOptions(shapeOptions=drawShapeOptions(fillOpacity = 0
+                                                                          ,color = 'white'
+                                                                          ,weight = 3)),
+        rectangleOptions = drawRectangleOptions(shapeOptions=drawShapeOptions(fillOpacity = 0
+                                                                              ,color = 'white'
+                                                                              ,weight = 3)),
+        circleOptions = drawCircleOptions(shapeOptions = drawShapeOptions(fillOpacity = 0
+                                                                          ,color = 'white'
+                                                                          ,weight = 3)),
+        editOptions = editToolbarOptions(edit = FALSE, selectedPathOptions = selectedPathOptions())) %>%
+        addMarkers(data = salesreps, 
+                   lat = salesreps$latitude,
+                   lng = salesreps$longitude,
+                   label = salesreps$salesmanager,
+                   icon = salesIcons[salesreps$icons],
+                   layerId = salesreps$salesmanager)
     
     
     return(map)
+    
   })
   # END MAP
   
@@ -75,6 +104,148 @@ shinyServer(function(session, input, output) {
     isolate({
       showAccountSummaryPopup(reactive.values$detailsdata, event$id, event$lat, event$lng)
     })
+  })
+  
+  
+  #'##############################################################
+  #' Observe event to select multiple points on map
+  #'
+  observeEvent(input$map_draw_new_feature,{
+    #Only add new layers for bounded locations
+    found_in_bounds <- maputils::findLocations(shape = input$map_draw_new_feature
+                                     , location_coordinates = coordinates_df
+                                     , location_id_colname = "CONTRACT_SOLDTOID")
+    
+    for(id in found_in_bounds){
+      if(id %in% data_of_click$clickedMarker){
+        # don't add id
+      } else {
+        # add id
+        data_of_click$clickedMarker<-append(data_of_click$clickedMarker, id, 0)
+      }
+    }
+    
+    
+    #' subset data to selected points
+    selected <- subset(coordinates_df, CONTRACT_SOLDTOID %in% data_of_click$clickedMarker)
+    reactive.values$selectedSet <- selected 
+    
+    proxy <- leafletProxy("map")
+    proxy %>% addCircleMarkers(data = selected,
+                         radius = selected$RADIUS,
+                         lat = selected$latitude,
+                         lng = selected$longitude,
+                         fillColor = "wheat",
+                         fillOpacity = 1,
+                         color = "hotpink",
+                         weight = 3,
+                         stroke = T,
+                         layerId = as.character(selected$secondLocationID)
+                         # highlightOptions = highlightOptions(color = "hotpink",
+                         #                                     opacity = 1.0,
+                         #                                     weight = 2,
+                         #                                     bringToFront = TRUE)
+                         )
+    
+  })
+  
+  
+  
+  
+  #'##############################################################
+  #' Observe event to deselect multiple points on map
+  #'
+  observeEvent(input$map_draw_deleted_features,{
+    # loop through list of one or more deleted features/ polygons
+    for(feature in input$map_draw_deleted_features$features){
+      
+      # get ids for locations within the bounding shape
+      bounded_layer_ids <- maputils::findLocations(shape = feature
+                                         , location_coordinates = coordinates_df
+                                         , location_id_colname = "secondLocationID")
+      
+      
+      # remove second layer representing selected locations
+      proxy <- leafletProxy("map")
+      proxy %>% removeMarker(layerId = as.character(bounded_layer_ids))
+      
+      first_layer_ids <- subset(coordinates_df, secondLocationID %in% bounded_layer_ids)$CONTRACT_SOLDTOID
+      
+      data_of_click$clickedMarker <- data_of_click$clickedMarker[!data_of_click$clickedMarker
+                                                                 %in% first_layer_ids]
+    }
+  })
+  
+  #'##############################################################
+  #' action button listener for create selection from selected accounts
+  #'
+  observeEvent(input$createSelection, {
+    
+    detailsdata <- reactive.values$detailsdata
+    selectionName <- input$selectedAccountsSelectionName
+    
+    #' subset data to selected points
+    selectedData <- subset(detailsdata, CONTRACT_SOLDTOID %in% data_of_click$clickedMarker)
+    
+    saveRDS(selectedData, paste0("selections/",selectionName,".RDS"))
+    
+    #' update load selection select dropdown
+    updateSelectInput(session, "selectionsToLoad", choices = list.files("./selections", pattern = ".RDS"))
+    
+    #' update venn diagram drop downs
+    updateSelectInput(session, "selection1", choices = list.files("./selections", pattern = ".RDS"))
+    updateSelectInput(session, "selection2", choices = list.files("./selections", pattern = ".RDS"))
+    
+  }) 
+  
+  
+  #'##############################################################
+  #' table showing selected data set from map
+  #'
+  output$selectedAccountsTable <- DT::renderDataTable({
+    as.data.frame(reactive.values$selectedSet[, c("CONTRACT_SOLDTOID", "SOLDTO_GUO_NAME", "Region", "EMP_SIZE","TURNOVER_SIZE","INFO_VALUE_SIZE","SOLDTO_POSTCODE")])
+  })
+  
+  
+  #'##############################################################
+  #' observe event for button to update value for selected set
+  #' 
+  observeEvent(input$updateValueButton,{
+    
+    coltoupdate <- input$columnToUpdate
+    valuetoupdate<- input$valueToUpdate
+    
+    newcoltocreate <- input$newColumnToCreate
+    newvaluetoupdate <- input$newValueToUpdate
+    
+    selectedids <- reactive.values$selectedSet$CONTRACT_SOLDTOID
+    
+    if(!is.empty(valuetoupdate)){
+      
+      customers[customers$CONTRACT_SOLDTOID %in% selectedids, ][[coltoupdate]] <<- valuetoupdate
+      
+    }
+    
+    # if(!is.empty(newcoltocreate)){
+    #   
+    #   customers[[newcoltocreate]] <<- NA
+    #   customers[customers$CONTRACT_SOLDTOID %in% selectedids, ][[coltoupdate]] <<- newvaluetoupdate
+    #   
+    # }
+    
+    
+    reactive.values$detailsdata <- customers
+    
+    #' #' keep only accounts with cood for plotting on map
+    has.cood.account <- maputils::getMapPlotDF(reactive.values$detailsdata)
+    
+    #' # update global variable for coordinates df
+    coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)
+    
+    reactive.values$selectedSet <- subset(coordinates_df, CONTRACT_SOLDTOID %in% selectedids)
+    
+    saveRDS(customers,"data/customersMAR2018.RDS")
+    
   })
   
   
@@ -190,7 +361,7 @@ shinyServer(function(session, input, output) {
     output$totalValueBox <- renderValueBox({
       
       valueBox(
-        paste("£ ",format(round(sum(accounts$ACCOUNT_INFO_VALUE)/1000000,1), big.mark=",")," M",sep=""), "Total Value", icon = icon("gbp"),
+        paste("£ ",format(round(sum(accounts$ACCOUNT_INFO_VALUE, na.rm = TRUE)/1000000,1), big.mark=",")," M",sep=""), "Total Value", icon = icon("gbp"),
         color = "teal"
       )
     })
@@ -199,7 +370,7 @@ shinyServer(function(session, input, output) {
     output$APVCValueBox <- renderValueBox({
       
       valueBox(
-        paste("£",ceiling(sum(accounts$ACCOUNT_INFO_VALUE)/nrow(accounts))), "APVC", icon = icon("money"),
+        paste("£",ceiling(sum(accounts$ACCOUNT_INFO_VALUE, na.rm = TRUE)/nrow(accounts))), "APVC", icon = icon("money"),
         color = "teal"
       )
     })
@@ -303,24 +474,6 @@ shinyServer(function(session, input, output) {
         
     })
     
-    # output$prodBar <- plotly::renderPlotly({
-    # 
-    #   proddf <- as.data.frame(table(contracts$PRODUCT_CODE))
-    #   print(head(proddf))
-    #   proddf <- proddf[order(proddf$Freq, decreasing = T), ]
-    #   print(head(proddf))
-    #   proddf <- proddf[1:5, ]
-    #   
-    #   p <- plot_ly(
-    #     x = proddf$Var1,
-    #     y = proddf$Freq,
-    #     name = "Top 5 Products",
-    #     type = "bar"
-    #   )
-    #   
-    # 
-    # })
-    
     
   })
   
@@ -346,8 +499,10 @@ shinyServer(function(session, input, output) {
       businessTypes <- input$businessTypeCheckbox
       custStatus <- input$custStatusCheckbox
       contractStatus <- isolate(input$contractStatusCheckbox)
+      prodBrands <- isolate(input$productBrandCheckbox)
       prodCodes <- isolate(input$productsToMatch)
       jobTitles <- isolate(input$jobsToMatch)
+      regions <- isolate(input$regionCheckbox)
       
       customers <- customers %>%
         dplyr::filter( EMP_SIZE %in% empSizes & 
@@ -356,6 +511,8 @@ shinyServer(function(session, input, output) {
                          CCH_BUSINESS_TYPE %in% businessTypes &
                          STATUS %in% custStatus & 
                          CONTRACT_STATUS %in% contractStatus &
+                         BRAND %in% prodBrands &
+                         Region %in% regions &
                          PRODUCT_CODE %contains% prodCodes &
                          SHIPTO_JOB_TITLE %containswithspace% jobTitles )
       
@@ -370,13 +527,19 @@ shinyServer(function(session, input, output) {
       #   dplyr::filter( PRODUCT_CODE %contains% prodCodes) %>%
       #   dplyr::filter( SHIPTO_JOB_TITLE %containswithspace% jobTitles )
       
-      accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]
+      #accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]
       
       #' set filtered data to reactive df
       reactive.values$detailsdata <- customers
       
+      #' #' keep only accounts with cood for plotting on map
+      has.cood.account <- maputils::getMapPlotDF(reactive.values$detailsdata)
       
-      redrawMap(accounts)
+      #' # update global variable for coordinates df
+      coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)
+      
+      
+      redrawMap(has.cood.account, input$colorBy)
       
     })
     
@@ -404,9 +567,13 @@ shinyServer(function(session, input, output) {
       
       reactive.values$detailsdata <- customers
       
-      accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]
+      #' #' keep only accounts with cood for plotting on map
+      has.cood.account <- maputils::getMapPlotDF(reactive.values$detailsdata)
       
-      redrawMap(accounts)
+      #' # update global variable for coordinates df
+      coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)
+      
+      redrawMap(has.cood.account)
     })
     
   })
@@ -468,18 +635,140 @@ shinyServer(function(session, input, output) {
       valuevar <- isolate(input$valuevar)
       
       customers <- reactive.values$detailsdata
-      customers <- customers[ !duplicated(customers$CONTRACT_SFDC_ID) , ]
+      #customers <- customers[ !duplicated(customers$CONTRACT_SFDC_ID) , ]
       
       display.table <<- withProgress(message = "in progress",
                                      detail = "This may take a while...",{
-                                       getSummaryData(customers, xaxis, yaxis, valuevar)
+                                       crosstabutils::getSummaryData(customers, xaxis, yaxis, valuevar)
                                      })
       
       return(display.table)
       
     })
     
+    updateTabItems(session, "tabsmenu", selected = "viewSegments")
+    
   })
+  
+  
+  #' #########################################################
+  #' bar chart
+  #' 
+  output$barChartPlot <- plotly::renderPlotly({
+    
+    # tol21rainbow= c("#771155", "#AA4488", "#CC99BB", "#114477", "#4477AA", "#77AADD", "#117777", "#44AAAA", 
+    #                 "#77CCCC", "#117744", "#44AA77", "#88CCAA", "#777711", "#AAAA44", "#DDDD77", "#774411", 
+    #                 "#AA7744", "#DDAA77", "#771122", "#AA4455", "#DD7788")
+    # 
+    # par(las=2, # make label text perpendicular to axis
+    #     mar=c(5,10,2,1), # increase y-axis margin
+    #     mfrow = c(1:2), # plot side by side
+    #     ps = 8, cex = 1, cex.main = 1) 
+    
+    #' get filtered customer data
+    customers <- reactive.values$detailsdata
+    
+    #' deduplicate
+    plot_data <- customers[ !duplicated(customers$CONTRACT_SFDC_ID) , ]
+    plot_data$INDUSTRY[is.na(plot_data$INDUSTRY)] <- "Unknown"
+    plot_data <- plot_data %>% dplyr::filter(INDUSTRY != "Unknown") %>% dplyr::filter(EMP_SIZE != "Unknown")
+    
+    counts <- table(plot_data$EMP_SIZE, plot_data$INDUSTRY)
+    counts <- table(plot_data$INDUSTRY, plot_data$EMP_SIZE)
+    counts <- as.data.frame(counts)
+    
+    p <- counts %>% plot_ly(x = ~Var1, y = ~Freq, color = ~Var2)
+    
+    # counts <- as.data.frame.matrix(counts)
+    # counts <- setDT(counts, keep.rownames = TRUE)[]
+    # colnames(counts)[1] <- "EMP_SIZE"
+    # p <- plot_ly(counts, x = ~EMP_SIZE, y = ~as.symbol(colnames(counts)[2]), type = 'bar', name = colnames(counts)[2])
+    # 
+    # for(i in 3:6){
+    #   p <- p %>% add_trace(y = ~as.symbol(colnames(counts)[i]), name = colnames(counts)[i])
+    # }
+    # 
+    # p <- p %>% layout(yaxis = list(title = 'Count'), barmode = 'stack')
+    
+    # Add 5 trace to this graphic with a loop
+      #add_trace(y = ~LA_Zoo, name = 'LA Zoo') %>%
+      
+    # #' Basic stacked bar plot
+    # barplot(counts, main="Barchart",
+    #         xlab="Number of Accounts", col=tol21rainbow, horiz = TRUE)
+    # legend("topright", rownames(counts), bg = "transparent", fill = tol21rainbow)
+    
+  })
+  
+  
+  #' #########################################################
+  #' Heat Map
+  #' 
+  output$heatMapPlot <- renderPlotly({
+    
+    withProgress({
+      input$drawHeatMap
+      
+      #' get filtered customer data
+      customers <- reactive.values$detailsdata
+      
+      xvar <- isolate(input$heatmapXVar)
+      yvar <- isolate(input$heatmapYVar)
+      
+      #' deduplicate
+      plot_data <- customers[ !duplicated(customers$CONTRACT_SFDC_ID) , ]
+      
+      plot_data <- plot_data[,c(xvar, yvar)]
+      plot_data[] <- lapply(plot_data, as.character)
+      
+      plot_data[[xvar]][is.na(plot_data[[xvar]])] <- "Unknown"
+      plot_data[[yvar]][is.na(plot_data[[yvar]])] <- "Unknown"
+      
+      plot_data <- plot_data[(plot_data[[xvar]] != "Unknown" & plot_data[[yvar]] != "Unknown"), ]
+      
+      # plot_data <- plot_data %>% 
+      #   dplyr::filter(as.symbol(xvar) != "Unknown") %>% 
+      #   dplyr::filter(as.symbol(yvar) != "Unknown")
+      
+      counts <- table(plot_data[[xvar]], plot_data[[yvar]])
+      
+      # vals <- unique(scales::rescale(c(counts)))
+      # o <- order(vals, decreasing = FALSE)
+      # cols <- scales::col_numeric("Reds", domain = NULL)(vals)
+      # colz <- setNames(data.frame(vals[o], cols[o]), NULL)
+      
+      # p <- plot_ly(
+      #   x = colnames(counts), y = rownames(counts),
+      #   z = counts, type = "heatmap", colorscale = colz
+      # )
+      
+      p <- heatmaply(as.data.frame.matrix(counts), 
+                     draw_cellnote = TRUE, colors = Reds(10),
+                     dendrogram = "none")
+      
+      p
+      
+    })
+    
+  })
+  
+  #' output$heatMapPlot <- renderPlot({
+  #'   
+  #'   #' get filtered customer data
+  #'   customers <- reactive.values$detailsdata
+  #'   
+  #'   #' deduplicate
+  #'   plot_data <- customers[ !duplicated(customers$CONTRACT_SFDC_ID) , ]
+  #'   plot_data$INDUSTRY[is.na(plot_data$INDUSTRY)] <- "Unknown"
+  #'   plot_data <- plot_data %>% dplyr::filter(INDUSTRY != "Unknown") %>% dplyr::filter(EMP_SIZE != "Unknown")
+  #'   
+  #'   #counts <- table(plot_data$INDUSTRY, plot_data$EMP_SIZE)
+  #'   
+  #'   plotheatmap(plot_data, NULL, var1="EMP_SIZE", var2="STATUS")
+  #'   
+  #'   
+  #' })
+  
   
   
   
@@ -560,9 +849,13 @@ shinyServer(function(session, input, output) {
       
       reactive.values$detailsdata <- selections.df
       
-      accounts <- selections.df[ !duplicated(selections.df$CONTRACT_SOLDTOID) , ]
+      #' #' keep only accounts with cood for plotting on map
+      has.cood.account <- maputils::getMapPlotDF(reactive.values$detailsdata)
       
-      redrawMap(accounts)
+      #' # update global variable for coordinates df
+      coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)
+      
+      redrawMap(has.cood.account)
       
     })
     
@@ -578,6 +871,13 @@ shinyServer(function(session, input, output) {
     selectionName <- input$selectionName
     
     saveRDS(selectiondata, paste0("selections/",selectionName,".RDS"))
+    
+    #' update load selection select dropdown
+    updateSelectInput(session, "selectionsToLoad", choices = list.files("./selections", pattern = ".RDS"))
+    
+    #' update venn diagram drop downs
+    updateSelectInput(session, "selection1", choices = list.files("./selections", pattern = ".RDS"))
+    updateSelectInput(session, "selection2", choices = list.files("./selections", pattern = ".RDS"))
     
     #' do something to show that selection is saved
     
@@ -597,10 +897,14 @@ shinyServer(function(session, input, output) {
       selection1 <- readRDS(paste0("selections/",selection1))
       selection2 <- readRDS(paste0("selections/",selection2))
       
-      only_sel1 <- setdiff(unique(selection1$ACCOUNT_SFDC_ID), unique(selection2$ACCOUNT_SFDC_ID))
-      only_sel2 <- setdiff(unique(selection2$ACCOUNT_SFDC_ID), unique(selection1$ACCOUNT_SFDC_ID))
+      #' set the environment df to selected selections
+      temp_selection <<- rbind(selection1,selection2)
       
-      sel1_and_sel2 <- intersect(unique(selection1$ACCOUNT_SFDC_ID), unique(selection2$ACCOUNT_SFDC_ID))
+      
+      only_sel1 <<- setdiff(unique(selection1$ACCOUNT_SFDC_ID), unique(selection2$ACCOUNT_SFDC_ID))
+      only_sel2 <<- setdiff(unique(selection2$ACCOUNT_SFDC_ID), unique(selection1$ACCOUNT_SFDC_ID))
+      
+      sel1_and_sel2 <<- intersect(unique(selection1$ACCOUNT_SFDC_ID), unique(selection2$ACCOUNT_SFDC_ID))
       
       sel1_union_sel2 <- union(unique(selection1$ACCOUNT_SFDC_ID), unique(selection2$ACCOUNT_SFDC_ID))
       
@@ -649,7 +953,74 @@ shinyServer(function(session, input, output) {
         
       })
       
+      output$downloadSetsButton <- shiny::renderUI({
+        
+        # list(
+        # 
+        #   column(width=3,
+        #          downloadButton("onlySetA", paste("Only",selection1))
+        #   ),
+        #   column(width=3,
+        #          downloadButton("setAandsetB", paste(selection1,"And",selection2))
+        #   ),
+        #   column(width=3,
+        #          downloadButton("onlySetB", paste("Only",selection2))
+        #   ),
+        #   column(width=3,
+        #          downloadButton("setAorsetB", paste(selection1,"Union",selection2))
+        #   )
+        # )
+        
+        buttonname1 <- gsub(paste("Only",input$selection1,"(",length(only_sel1),")"),pattern=".RDS",replacement ="",fixed = TRUE)
+        buttonname2 <- gsub(paste(input$selection2,"And",input$selection1, "(",length(sel1_and_sel2),")"),pattern=".RDS",replacement ="",fixed = TRUE)
+        buttonname3 <- gsub(paste("Only",input$selection2, "(",length(only_sel2),")"),pattern=".RDS",replacement ="",fixed = TRUE)
+        buttonname4 <- gsub(paste(input$selection1,"Union",input$selection2, "(",length(sel1_union_sel2),")"),pattern=".RDS",replacement ="",fixed = TRUE)
+        
+        
+        # list(downloadButton("onlySetA", buttonname1),
+        #      downloadButton("setAandsetB", buttonname2),
+        #      downloadButton("onlySetB", buttonname3),
+        #      downloadButton("setAorsetB", buttonname4))
+        
+        subsetchoices = c(buttonname1, buttonname2, buttonname3)
+        
+        list(
+             checkboxGroupInput("selectSubsets", "Select Subsets", choiceNames = subsetchoices, choiceValues = c("onlyA","AandB","onlyB")),
+             tags$br(),
+             actionButton("setSubsetAsSelection","Set Selection")
+             )
+        
+      }) #' end download buttons
+      
     })
+    
+  })
+  
+  observeEvent(input$setSubsetAsSelection, {
+    
+    idstoset <- NULL
+    
+    if("onlyA" %in% input$selectSubsets ) {
+      idstoset <- c(idstoset, only_sel1)
+    }
+    
+    if("AandB" %in% input$selectSubsets ) {
+      idstoset <- c(idstoset, sel1_and_sel2)
+    }
+    
+    if("onlyB" %in% input$selectSubsets ) {
+      idstoset <- c(idstoset, only_sel2)
+    }
+    
+    
+    print(length(idstoset))
+    
+    
+    reactive.values$detailsdata <- temp_selection %>%
+                                      dplyr::filter( ACCOUNT_SFDC_ID %in% idstoset )
+    
+    updateTabItems(session, "tabsmenu", selected = "customermap")
+    
     
   })
   
