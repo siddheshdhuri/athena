@@ -9,35 +9,71 @@ library(VennDiagram)
 library(googleVis)
 library(rJava)
 library(RJDBC)
+library(leaflet.extras)
+library(sp)
+library(heatmaply)
+library(maputils)
+library(crosstabutils)
+
+initial_seg_cols = c("CCH_BUSINESS_TYPE","ACCOUNT_SFDC_ID","SOLDTO_GUO_NAME","SOLDTO_ADDRESS","SOLDTO_TOWN","SOLDTO_POSTCODE",
+                     "INDUSTRY","SOLDTO_EMAIL","SOLDTO_PHONE", "CONTRACT_SHIPTOID","SHIPTO_FIRST_NAME","SHIPTO_LAST_NAME","SHIPTO_JOB_TITLE",
+                     "SHIPTO_EMAIL","SHIPTO_PHONE","LATEST_RENEWAL","EARLIEST_RENEWAL","STATUS","CCH_INFO_VALUE","CRONER_INFO_VALUE")
+
+tol21rainbow= c("#771155", "#CC99BB", "#AA4488", "#771122", "#AA4455", "#774411", "#DD7788", "#AA7744", "#DDAA77", 
+                "#88CCAA", "#777711", "#AAAA44", "#DDDD77", "#114477", "#4477AA", "#77AADD", "#117777", "#44AAAA", 
+                "#77CCCC", "#117744", "#44AA77" )
+
+source("helpe.R")
 
 
-# initial_seg_cols = c("CCH_BUSINESS_TYPE","ACCOUNT_SFDC_ID","SOLDTO_GUO_NAME","SOLDTO_ADDRESS","SOLDTO_TOWN","SOLDTO_POSTCODE",
-#                      "INDUSTRY","SOLDTO_EMAIL","SOLDTO_PHONE", "CONTRACT_SHIPTOID","SHIPTO_FIRST_NAME","SHIPTO_LAST_NAME","SHIPTO_JOB_TITLE",
-#                      "SHIPTO_EMAIL","SHIPTO_PHONE","LATEST_RENEWAL","EARLIEST_RENEWAL","STATUS","CCH_INFO_VALUE","CRONER_INFO_VALUE")
+is.empty <- function(x){
+  
+  if(is.null(x)) return(TRUE)
+  
+  if(is.na(x)) return(TRUE)
+  
+  if(nchar(gsub("[^[:alnum:]]","",x)) < 1) return(TRUE)
+  
+  return(FALSE)
+  
+}
 
-initial_seg_cols = c("ACCOUNT_SFDC_ID","SOLDTO_GUO_NAME","SOLDTO_POSTCODE",
-                     "LATEST_RENEWAL","EARLIEST_RENEWAL","STATUS","CCH_INFO_VALUE","CRONER_INFO_VALUE")
+
+# initial_seg_cols = c("ACCOUNT_SFDC_ID","SOLDTO_GUO_NAME","SOLDTO_POSTCODE",
+#                      "LATEST_RENEWAL","EARLIEST_RENEWAL","STATUS","CCH_INFO_VALUE","CRONER_INFO_VALUE")
+
+
+#' subset global variables (as i am lazy to create reactive variables)
+only_sel1 <- only_sel2 <- sel1_and_sel2 <- NULL
+temp_selection <- NULL
 
 
 if (FALSE) {
   
   #'#####################################################################################
-  #' intitialise settings
-  Sys.setenv(JAVA_HOME='/usr/lib/jvm/java-8-openjdk-amd64')
-  options(java.parameters="-Xmx2g")
+  #' connect to database
   
-  .jinit()
+  jdbcConnection <- dbconnect::getDBConnection(dbserver = "ukkinORA03x.wkuk.net",
+                                           portnumber = "1521", 
+                                           dbname = "WKUKDW", 
+                                           username = "DHURIS", 
+                                           password = "Approach$204Fill")
   
-  jdbcDriver <- JDBC(driverClass = "oracle.jdbc.OracleDriver",
-                     classPath = "/usr/lib/oracle/12.1/client64/lib/ojdbc6.jar")
   
-  jdbcConnection <- dbConnect(jdbcDriver, "jdbc:oracle:thin:@//ukkinORA03x.wkuk.net:1521/WKUKDW",
-                              "REPO", "INTERVENTION5")
+  
+  # Sys.setenv(JAVA_HOME='/usr/lib/jvm/java-8-openjdk-amd64')
+  # options(java.parameters="-Xmx2g")
+  # 
+  # .jinit()
+  # 
+  # jdbcDriver <- JDBC(driverClass = "oracle.jdbc.OracleDriver",
+  #                    classPath = "/usr/lib/oracle/12.1/client64/lib/ojdbc6.jar")
+  # 
+  # jdbcConnection <- dbConnect(jdbcDriver, "jdbc:oracle:thin:@//ukkinORA03x.wkuk.net:1521/WKUKDW",
+  #                             "DHURIS", "Approach$204Fill")
   
   #'#####################################################################################
   
-  
-  #' current customers query
   cust_query <- "WITH LIVE_CUST_DETAILS AS (
   SELECT 
   CT.SOLDTOID__C AS CONTRACT_SOLDTOID, 
@@ -45,10 +81,11 @@ if (FALSE) {
   CT.BILL_TO_ID__C AS CONTRACT_BILLTOID,
   CT.PAYER_ID__C AS CONTRACT_PAYERID, 
   CT.ID AS CONTRACT_SFDC_ID, CT.CONTRACTNUMBER__C AS CONTRACT_SAP_ID,
-  CT.AMOUNT__C AS CONTRACT_VALUE, CT.STATUS__C AS CONTRACT_STATUS,
-  CT.DESCRIPTION__C AS CONTRACT_DESCRIPTION,
+  CT.STATUS__C AS CONTRACT_STATUS, CT.DESCRIPTION__C AS CONTRACT_DESCRIPTION,
   TO_CHAR(CT.STARTDATE__C,'YYYYMMDD') AS CONTRACT_STARTDATE, 
   TO_CHAR(CT.ENDDATE__C,'YYYYMMDD') AS CONTRACT_ENDDATE,
+  CT.AMOUNT__C AS CONTRACT_VALUE, CT.CONTRACTTERM__C/12 AS CONTRACT_TERM_YEARS, 
+  LI.CONTRACTLINEITEMNUMBER__C AS LINEITEM_SAP_ID, LI.AMOUNT__C AS LINEITEM_VALUE,
   P.PRODUCT_CODE, P.PRODUCT_FAMILY, P.BRAND, P.BUSINESS_UNIT, P.\"Subs_One-Off\" AS SUBS_ONE_OFF,
   A.ID AS ACCOUNT_SFDC_ID, A.SAP_CLIENT_NUMBER__C AS ACCOUNT_SAP_ID, 
   (A.TOTALCCHINFORMATIONVALUE + A.TOTALCRONERINFORMATIONVALUE) AS ACCOUNT_INFO_VALUE,
@@ -66,7 +103,8 @@ if (FALSE) {
   REPLACE(shipto.POST_CODE,',',';') AS SHIPTO_POSTCODE,
   shipto.EMAIL AS SHIPTO_EMAIL, shipto.TELEPHONE SHIPTO_PHONE,
   A.TOTALCCHINFORMATIONVALUE AS CCH_INFO_VALUE,
-  A.TOTALCRONERINFORMATIONVALUE AS CRONER_INFO_VALUE
+  A.TOTALCRONERINFORMATIONVALUE AS CRONER_INFO_VALUE,
+  ROW_NUMBER() OVER (PARTITION BY LI.CONTRACTLINEITEMNUMBER__C ORDER BY LI.CONTRACTLINEITEMNUMBER__C) AS RN
   FROM ODS.SFDC_CONTRACT CT, ODS.SFDC_ACCOUNT A, ODS.SFDC_CONTRACT_LINEITEM LI,
   BUSINESS_ANALYSIS.CUSTOMER_D SOLDTO, 
   BUSINESS_ANALYSIS.CUSTOMER_D SHIPTO,
@@ -82,7 +120,8 @@ if (FALSE) {
   AND SHIPTO.BP_ID = CT.SHIPTOID__C
   )
   SELECT *
-  FROM LIVE_CUST_DETAILS LCD"
+  FROM LIVE_CUST_DETAILS LCD
+  WHERE RN = 1"
 
 
 cust_query <- gsub("\n|\t"," ",cust_query)
@@ -93,144 +132,174 @@ customers <- RJDBC::dbGetQuery(jdbcConnection, cust_query)
 t2 <- Sys.time()
 
 print(paste("time taken : ",t2-t1))
+
+
+customers$CONTRACT_TERM_YEARS <- ifelse(customers$CONTRACT_TERM_YEARS < 1,1,customers$CONTRACT_TERM_YEARS)
+
+customers$LINEITEM_ANNUAL_VALUE <- customers$LINEITEM_VALUE / customers$CONTRACT_TERM_YEARS
+customers$CONTRACT_ANNUAL_VALUE <- customers$CONTRACT_VALUE / customers$CONTRACT_TERM_YEARS
+
   
 }
 
-
-source("helpe.R")
 
 if(FALSE){
 
-  x <- readLines("data/CUST_DATA2.csv")
+  #x <- readLines("data/CUST_DATA2.csv")
   
-customers <- data.table::fread("data/CUST_DATA2.csv")
-
-
-
-
-coordinates <- data.table::fread("ukpostcodes.csv")
-
-customers <- readRDS("data/customers_anonymized.RDS")
-coordinates <- readRDS("data/ukpostcodes.RDS")
-
-customers <- merge(customers,coordinates,by.x = "SOLDTO_POSTCODE", by.y ="postcode",all.x = TRUE)
-
-customers$CONTRACT_STARTDATE <- as.Date(as.character(customers$CONTRACT_STARTDATE), "%Y-%m-%d") 
-customers$CONTRACT_ENDDATE <- as.Date(as.character(customers$CONTRACT_ENDDATE), "%Y-%m-%d") 
-
-customer_renewals <- customers %>% 
-                      group_by(ACCOUNT_SFDC_ID) %>% 
-                      summarise(EARLIEST_RENEWAL = min(CONTRACT_ENDDATE),
-                                LATEST_RENEWAL = max(CONTRACT_ENDDATE))
-
-customer_renewals$STATUS <- ifelse(customer_renewals$LATEST_RENEWAL >= Sys.Date(), "LIVE", "LAPSED")
-
-customers <- merge(customers,customer_renewals,by = "ACCOUNT_SFDC_ID", all.x = TRUE)
-
-
-
-#' compute emp size categories
-max_emp <- max(customers$NUMBEROFEMPLOYEES, na.rm = T)
-customers$EMP_SIZE = cut(customers$NUMBEROFEMPLOYEES,c(0,5,10,50,250,500,1000,max_emp))
-levels(customers$EMP_SIZE) = c("0-5","6-10","11-50","51-250","251-500","501-1000","1000+")
-#customers$EMP_SIZE <- as.character(customers$EMP_SIZE)
-
-#' Add NA as a level in the factor
-levels_without_na <- levels(customers$EMP_SIZE)
-customers$EMP_SIZE <- addNA(customers$EMP_SIZE)
-levels(customers$EMP_SIZE) <- c(levels_without_na, "Unknown")
-
-
-#' compute annual revenue categories
-max_turnover <- max(customers$ANNUALREVENUE, na.rm = T)
-customers$TURNOVER_SIZE = cut(customers$ANNUALREVENUE, c(0,100000,500000,1000000,5000000,10000000,max_turnover))
-levels(customers$TURNOVER_SIZE) = c("0-100K","100K-500L","500K-1M","1M-5M","5M-10M","10M+")
-
-
-levels_without_na <- levels(customers$TURNOVER_SIZE)
-customers$TURNOVER_SIZE <- addNA(customers$TURNOVER_SIZE)
-levels(customers$TURNOVER_SIZE) <- c(levels_without_na, "Unknown")
-
-
-
-
-#' compute info value size categories
-max_info_val <- max(customers$ACCOUNT_INFO_VALUE, na.rm = T)
-min_info_val <- min(customers$ACCOUNT_INFO_VALUE, na.rm = T)-1
-customers$INFO_VALUE_SIZE = cut(customers$ACCOUNT_INFO_VALUE,c(min_info_val,500,1000,2500,5000,10000,max_info_val))
-levels(customers$INFO_VALUE_SIZE) = c("< 500","501-1000","1001-2500","2501-5000","5001-10000","10000+")
-#customers$INFO_VALUE_SIZE <- as.character(customers$INFO_VALUE_SIZE)
-
-
-
-unknown.addr <- customers[is.na(customers$latitude), c("SOLDTO_POSTCODE","longitude","latitude")]
-
-#unknown.addr.str <- paste(unknown.addr$SOLDTO_ADDRESS, unknown.addr$SOLDTO_TOWN, sep = ", ")
-unknown.addr <- unknown.addr[!duplicated(unknown.addr$SOLDTO_POSTCODE),]
-
-unknown.addr <- unknown.addr[1:2000,]
-
-coods <- ggmap::geocode(unknown.addr$SOLDTO_POSTCODE)
-
-unknown.addr$longitude <- unknown.addr$latitude <- NULL
-unknown.addr$longitude <- coods$lon
-unknown.addr$latitude <- coods$lat
-
-colnames(unknown.addr) <- c("postcode","longitude","latitude")
-unknown.addr <- unknown.addr[!is.na(unknown.addr$longitude), c("postcode","latitude","longitude")]
-
-#' save to uk postcodes
-
-# for( i in 1:100){
-#   
-#   location <- unknown.addr$SOLDTO_TOWN[i]
-#   
-#   withTimeout({
-#     repeat {
-#       coods <- try(ggmap::geocode(location))
-#       unknown.addr$longitude[i] <- coods$lon
-#       unknown.addr$latitude[i] <- coods$lat
-#       # Handle error from try if necessary:
-#       if (class(coods) != "try-error") {
-#         Sys.sleep(60)
-#       }
-#     }
-#   }, timeout = 5*60, onTimeout = "warning")
-#   
-# }
-
-
-unkown.coods.df <- data.frame(location = unknown.addr,
-                              longitude = coods$lon,
-                              latitude = coods$lat)
+  #customers <- data.table::fread("data/CUST_DATA2.csv")
+  
+  
+  #coordinates <- data.table::fread("ukpostcodes.csv")
+  
+  #customers <- readRDS("data/customers_anonymized.RDS")
+  
+  coordinates <- readRDS("data/ukpostcodes.RDS")
+  
+  customers <- merge(customers,coordinates,by.x = "SOLDTO_POSTCODE", by.y ="postcode",all.x = TRUE)
+  remove(coordinates)
+  
+  customers$CONTRACT_STARTDATE <- as.Date(as.character(customers$CONTRACT_STARTDATE), "%Y%m%d") 
+  customers$CONTRACT_ENDDATE <- as.Date(as.character(customers$CONTRACT_ENDDATE), "%Y%m%d") 
+  
+  customer_renewals <- customers %>% 
+                        group_by(ACCOUNT_SFDC_ID) %>% 
+                        summarise(EARLIEST_RENEWAL = min(CONTRACT_ENDDATE),
+                                  LATEST_RENEWAL = max(CONTRACT_ENDDATE))
+  
+  customer_renewals$STATUS <- ifelse(customer_renewals$LATEST_RENEWAL >= Sys.Date(), "LIVE", "LAPSED")
+  
+  customers <- merge(customers,customer_renewals,by = "ACCOUNT_SFDC_ID", all.x = TRUE)
+  
+  
+  
+  #' compute emp size categories
+  max_emp <- max(customers$NUMBEROFEMPLOYEES, na.rm = T)
+  customers$EMP_SIZE = cut(customers$NUMBEROFEMPLOYEES,c(0,5,10,50,250,500,1000,max_emp))
+  levels(customers$EMP_SIZE) = c("0-5","6-10","11-50","51-250","251-500","501-1000","1000+")
+  #customers$EMP_SIZE <- as.character(customers$EMP_SIZE)
+  
+  #' Add NA as a level in the factor
+  levels_without_na <- levels(customers$EMP_SIZE)
+  customers$EMP_SIZE <- addNA(customers$EMP_SIZE)
+  levels(customers$EMP_SIZE) <- c(levels_without_na, "Unknown")
+  
+  
+  #' compute annual revenue categories
+  max_turnover <- max(customers$ANNUALREVENUE, na.rm = T)
+  customers$TURNOVER_SIZE = cut(customers$ANNUALREVENUE, c(0,100000,500000,1000000,5000000,10000000,max_turnover))
+  levels(customers$TURNOVER_SIZE) = c("0-100K","100K-500K","500K-1M","1M-5M","5M-10M","10M+")
+  
+  
+  levels_without_na <- levels(customers$TURNOVER_SIZE)
+  customers$TURNOVER_SIZE <- addNA(customers$TURNOVER_SIZE)
+  levels(customers$TURNOVER_SIZE) <- c(levels_without_na, "Unknown")
+  
+  
+  
+  
+  #' compute info value size categories
+  max_info_val <- max(customers$ACCOUNT_INFO_VALUE, na.rm = T)
+  min_info_val <- min(customers$ACCOUNT_INFO_VALUE, na.rm = T)-1
+  customers$INFO_VALUE_SIZE = cut(customers$ACCOUNT_INFO_VALUE,c(min_info_val,500,1000,2500,5000,10000,max_info_val))
+  levels(customers$INFO_VALUE_SIZE) = c("< £ 500","£ 501-1000","£ 1001-2500","£ 2501-5000","£ 5001-10000","£ 10000+")
+  #customers$INFO_VALUE_SIZE <- as.character(customers$INFO_VALUE_SIZE)
+  
+  
+  ### - add PROPOSITION CODE COLUMN
+  # customers$PROP_SAP_ID <- customers$LINEITEM_SAP_ID
+  # customers$PROP_SAP_ID <- gsub('.{3}$', '010', customers$PROP_SAP_ID)
+  # 
+  # propositions <- customers %>% select(LINEITEM_SAP_ID, PRODUCT_CODE) %>% filter(grepl("-000010", LINEITEM_SAP_ID))
+  # colnames(propositions) <- c("PROP_SAP_ID", "PROPOSITION_CODE")
+  # 
+  # customers <- merge(customers, propositions, by = "PROP_SAP_ID", all.x = TRUE)
+  
+  ## add region
+  customers$SOLDTO_POSTCODE <- gsub("[^[:alnum:][:space:]]","",customers$SOLDTO_POSTCODE)
+  customers$PostcodeArea <- substr(customers$SOLDTO_POSTCODE,
+                                   start = 1,
+                                   stop = as.numeric(regexpr("[0-9]",customers$SOLDTO_POSTCODE))-1)
+  
+  postregion <- readRDS("data/postarea_region_mapping.RDS")
+  
+  customers <- merge(customers, postregion, by="PostcodeArea", all.x = TRUE)
+  customers$Region[unlist(lapply(customers$Region, function(x) is.empty(x)))] <- "Unknown"
+  
+  
+  saveRDS(customers, "data/archive/customersMAR2018.RDS")
+  
+  if(FALSE) {
+    
+    unknown.addr <- customers[is.na(customers$latitude), c("SOLDTO_POSTCODE","longitude","latitude")]
+    
+    #unknown.addr.str <- paste(unknown.addr$SOLDTO_ADDRESS, unknown.addr$SOLDTO_TOWN, sep = ", ")
+    unknown.addr <- unknown.addr[!duplicated(unknown.addr$SOLDTO_POSTCODE),]
+    
+    unknown.addr <- unknown.addr[1:2000,]
+    
+    coods <- ggmap::geocode(unknown.addr$SOLDTO_POSTCODE)
+    
+    unknown.addr$longitude <- unknown.addr$latitude <- NULL
+    unknown.addr$longitude <- coods$lon
+    unknown.addr$latitude <- coods$lat
+    
+    colnames(unknown.addr) <- c("postcode","longitude","latitude")
+    unknown.addr <- unknown.addr[!is.na(unknown.addr$longitude), c("postcode","latitude","longitude")]
+    
+    coordinates <- rbind(coordinates, unknown.addr)
+    
+    #' save to uk postcodes
+    saveRDS(coordinates, "data/ukpostcodes.RDS")
+    
+    # for( i in 1:100){
+    #   
+    #   location <- unknown.addr$SOLDTO_TOWN[i]
+    #   
+    #   withTimeout({
+    #     repeat {
+    #       coods <- try(ggmap::geocode(location))
+    #       unknown.addr$longitude[i] <- coods$lon
+    #       unknown.addr$latitude[i] <- coods$lat
+    #       # Handle error from try if necessary:
+    #       if (class(coods) != "try-error") {
+    #         Sys.sleep(60)
+    #       }
+    #     }
+    #   }, timeout = 5*60, onTimeout = "warning")
+    #   
+    # }
+    
+    # unkown.coods.df <- data.frame(location = unknown.addr,
+    #                               longitude = coods$lon,
+    #                               latitude = coods$lat)
+    
+  }
 
 }
 
 
+customers <- readRDS("data/customersMAR2018.RDS")
 customers <- readRDS("data/customers_anonymized.RDS")
 
 #' accounts one record per sold to id for plotting on map
 # accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]
 
-
+#' ###############################################################################
 #' function to redraw map
-redrawMap <- function(accounts, colorBy = NULL){
+#' 
+redrawMap <- function(has.cood.account, colorBy = "Region"){
   
   withProgress(message = "Redrawing Map",{
     
-    has.cood.index <-  complete.cases(accounts[,c("longitude","latitude")])
-    
-    has.cood.account <- accounts[has.cood.index,]
-    has.cood.account$RADIUS <- scales::rescale(has.cood.account$ACCOUNT_INFO_VALUE, to = c(8,60))
-    
-    pal <- colorFactor(c("blue","black"), domain = has.cood.account$STATUS)
+    pal <- colorFactor(tol21rainbow, domain = has.cood.account[[colorBy]])
     
     leafletProxy("map", data = has.cood.account) %>% 
       clearMarkers() %>%
       addCircleMarkers(
         lng = ~longitude,
         lat = ~latitude,
-        color = ~pal(STATUS),
+        color = ~pal(has.cood.account[[colorBy]]),
         stroke = TRUE, weight = 2,
         opacity = 0.6,
         radius = ~RADIUS,
@@ -239,12 +308,13 @@ redrawMap <- function(accounts, colorBy = NULL){
         options = list(riseOnHover = TRUE)
         #clusterOptions = markerClusterOptions()
       ) %>%
-      addLegend("bottomleft",pal=pal, values=~STATUS, layerId = "colorLegend")
+      addLegend("bottomleft",pal=pal, values=has.cood.account[[colorBy]], layerId = "colorLegend")
     
   })
   
 }
 
+########################################################################################################
 # Code to anonymize customers data
 
 if(FALSE) {
@@ -293,6 +363,72 @@ if(FALSE) {
   customers$SHIPTO_EMAIL <- paste0(customers$SHIPTO_FIRST_NAME,".",customers$SHIPTO_FIRST_NAME,"@mail.com")
   
   
+  customers <- customers[!customers$Region == "Unknown", ]
+  #' randomize rows
+  customers <- customers[sample(nrow(customers)), ]
+  
+  customers <- customers[1:100000, ]
+  
+  saveRDS(customers, "data/customers_anonymized.RDS")
+  
 }
+
+
+
+###############################################################
+salesIcons <- iconList(
+  sdIcon = makeIcon(
+    iconUrl = "www/img/sd.jpg",
+    iconWidth = 30, iconHeight = 30
+  ),
+  svIcon = makeIcon(
+    iconUrl = "www/img/sv.jpeg",
+    iconWidth = 30, iconHeight = 30
+  ),
+  hmIcon = makeIcon(
+    iconUrl = "www/img/hm.jpg",
+    iconWidth = 30, iconHeight = 30
+  ),
+  skIcon = makeIcon(
+    iconUrl = "www/img/sk.jpg",
+    iconWidth = 30, iconHeight = 30
+  ),
+  lpIcon = makeIcon(
+    iconUrl = "www/img/lp.jpg",
+    iconWidth = 30, iconHeight = 30
+  ),
+  jbIcon = makeIcon(
+    iconUrl = "www/img/jb.png",
+    iconWidth = 30, iconHeight = 30
+  )
+)
+
+
+#' ################################################################
+#' function to get df to plot on map
+#' 
+#' getMapPlotDF <- function(df){
+#'   
+#'   accounts <- df[ !duplicated(df$CONTRACT_SOLDTOID) , ]
+#'   
+#'   #' set NA account_values to zero
+#'   accounts$ACCOUNT_INFO_VALUE[is.na(accounts$ACCOUNT_INFO_VALUE)] <- 0
+#'   
+#'   has.cood.index <- complete.cases(accounts[,c("longitude","latitude")])
+#'   
+#'   has.cood.account <- accounts[has.cood.index,]
+#'   
+#'   if(nrow(has.cood.account) <= 0) return(NULL)
+#'   
+#'   has.cood.account$RADIUS <- scales::rescale(has.cood.account$ACCOUNT_INFO_VALUE, to = c(8,60))
+#'   
+#'   # generate second set of unique location IDs for second layer of selected locations
+#'   has.cood.account$secondLocationID <- paste0(as.character(has.cood.account$CONTRACT_SOLDTOID), "_selectedLayer")
+#'   
+#'   return(has.cood.account)
+#'   
+#' }
+
+
 
 
