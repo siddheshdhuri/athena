@@ -30,17 +30,6 @@ shinyServer(function(session, input, output) {
     #' can be used to plot data
     has.cood.account <- maputils::getMapPlotDF(customers)
     
-    #' keep filtered
-    # empSizes <- isolate(input$empsizeCheckbox)
-    # infovalsizes <- isolate(input$infovalsizeCheckbox)
-    # businessTypes <- isolate(input$businessTypeCheckbox)
-    # 
-    # has.cood.account <- has.cood.account %>%
-    #   dplyr::filter( EMP_SIZE %in% empSizes ) %>%
-    #   dplyr::filter( INFO_VALUE_SIZE %in% infovalsizes ) %>%
-    #   dplyr::filter( CCH_BUSINESS_TYPE %in% businessTypes ) %>%
-    #   dplyr::filter( STATUS %in% "LIVE" )
-    
     
     #' ###
     coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)

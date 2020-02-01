@@ -4,7 +4,7 @@ library(leaflet)
 library(shinyjs)
 
 dashboardPage(
-  dashboardHeader(title = "ATHENA"),
+  dashboardHeader(title = span(tagList(icon("check-square"), "SiMPL"))),
   
   
   dashboardSidebar(

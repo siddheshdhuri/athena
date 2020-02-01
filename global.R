@@ -8,7 +8,7 @@ library(plotly)
 library(VennDiagram)
 library(googleVis)
 library(rJava)
-library(RJDBC)
+#library(RJDBC)
 library(leaflet.extras)
 library(sp)
 library(heatmaply)
@@ -279,7 +279,7 @@ if(FALSE){
 }
 
 
-customers <- readRDS("data/customersMAR2018.RDS")
+#customers <- readRDS("data/customersMAR2018.RDS")
 customers <- readRDS("data/customers_anonymized.RDS")
 
 #' accounts one record per sold to id for plotting on map
