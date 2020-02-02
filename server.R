@@ -52,7 +52,7 @@ shinyServer(function(session, input, output) {
         stroke = TRUE, weight = 2,
         opacity = 0.6,
         radius = ~RADIUS,
-        label = has.cood.account[[CUTOMER_NAME_COL]],
+        label = has.cood.account[[CUSTOMER_NAME_COL]],
         layerId = has.cood.account[[CUSTOMER_UNIQUE_ID_COL]],
         options = list(riseOnHover = TRUE)
         #clusterOptions = markerClusterOptions()
