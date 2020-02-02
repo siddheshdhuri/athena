@@ -28,14 +28,17 @@ shinyServer(function(session, input, output) {
     
     #' create df with complete coodinates and radius variable that
     #' can be used to plot data
-    has.cood.account <- maputils::getMapPlotDF(customers)
+    has.cood.account <- maputils::getMapPlotDF(customers, UNIQUE_ID_COL = CUSTOMER_UNIQUE_ID_COL, 
+                                               CUTOMER_SIZE_COL = CUTOMER_SIZE_COL, 
+                                               LONGITUDE_COL = LONGITUDE_COL, LATITUDE_COL = LATITUDE_COL)
     
     
     #' ###
-    coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)
+    coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c(LONGITUDE_COL, LATITUDE_COL)] , has.cood.account)
+    
     
     #' sales reps coordinates
-    salesreps <- readRDS("data/salesreps.RDS")
+    salesreps <- readRDS(SALES_REP_DATA)
     
     pal <- colorFactor(tol21rainbow, domain = has.cood.account[[input$colorBy]])
     
@@ -49,8 +52,8 @@ shinyServer(function(session, input, output) {
         stroke = TRUE, weight = 2,
         opacity = 0.6,
         radius = ~RADIUS,
-        label = ~SOLDTO_GUO_NAME,
-        layerId = ~CONTRACT_SOLDTOID,
+        label = has.cood.account[[CUTOMER_NAME_COL]],
+        layerId = has.cood.account[[CUSTOMER_UNIQUE_ID_COL]],
         options = list(riseOnHover = TRUE)
         #clusterOptions = markerClusterOptions()
       ) %>%
@@ -70,11 +73,11 @@ shinyServer(function(session, input, output) {
                                                                           ,weight = 3)),
         editOptions = editToolbarOptions(edit = FALSE, selectedPathOptions = selectedPathOptions())) %>%
         addMarkers(data = salesreps, 
-                   lat = salesreps$latitude,
-                   lng = salesreps$longitude,
-                   label = salesreps$salesmanager,
-                   icon = salesIcons[salesreps$icons],
-                   layerId = salesreps$salesmanager)
+                   lat = salesreps[[SALES_REP_LATITUDE_COL]],
+                   lng = salesreps[[SALES_REP_LONGITUDE_COL]],
+                   label = salesreps[[SALES_REP_NAME_COL]],
+                   icon = salesIcons[salesreps[[SALES_REP_ICON_COL]]],
+                   layerId = salesreps[[SALES_REP_NAME_COL]])
     
     
     return(map)
@@ -103,7 +106,7 @@ shinyServer(function(session, input, output) {
     #Only add new layers for bounded locations
     found_in_bounds <- maputils::findLocations(shape = input$map_draw_new_feature
                                      , location_coordinates = coordinates_df
-                                     , location_id_colname = "CONTRACT_SOLDTOID")
+                                     , location_id_colname = CUSTOMER_UNIQUE_ID_COL)
     
     for(id in found_in_bounds){
       if(id %in% data_of_click$clickedMarker){
@@ -116,7 +119,8 @@ shinyServer(function(session, input, output) {
     
     
     #' subset data to selected points
-    selected <- subset(coordinates_df, CONTRACT_SOLDTOID %in% data_of_click$clickedMarker)
+    #selected <- subset(coordinates_df, CUSTOMER_UNIQUE_ID_COL %in% data_of_click$clickedMarker)
+    selected <- coordinates_df[coordinates_df[[CUSTOMER_UNIQUE_ID_COL]] %in% data_of_click$clickedMarker, ]
     reactive.values$selectedSet <- selected 
     
     proxy <- leafletProxy("map")
@@ -192,7 +196,7 @@ shinyServer(function(session, input, output) {
   #' table showing selected data set from map
   #'
   output$selectedAccountsTable <- DT::renderDataTable({
-    as.data.frame(reactive.values$selectedSet[, c("CONTRACT_SOLDTOID", "SOLDTO_GUO_NAME", "Region", "EMP_SIZE","TURNOVER_SIZE","INFO_VALUE_SIZE","SOLDTO_POSTCODE")])
+    as.data.frame(reactive.values$selectedSet[, c(CUSTOMER_UNIQUE_ID_COL, CUSTOMER_NAME_COL, "Region", "EMP_SIZE","TURNOVER_SIZE","INFO_VALUE_SIZE","SOLDTO_POSTCODE")])
   })
   
   

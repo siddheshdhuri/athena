@@ -25,6 +25,22 @@ tol21rainbow= c("#771155", "#CC99BB", "#AA4488", "#771122", "#AA4455", "#774411"
 
 source("helpe.R")
 
+config <- config::get()
+
+SALES_REP_DATA = config$SALES_REP_DATA
+
+#' COLUMN MAPPING TO BE MOVED TO CONFIG
+CUSTOMER_UNIQUE_ID_COL = config$CUSTOMER_UNIQUE_ID_COL
+CUSTOMER_NAME_COL = config$CUTOMER_NAME_COL
+CUTOMER_SIZE_COL = config$CUTOMER_SIZE_COL
+LONGITUDE_COL = config$LONGITUDE_COL
+LATITUDE_COL = config$LATITUDE_COL
+
+SALES_REP_LONGITUDE_COL = config$SALES_REP_LONGITUDE_COL
+SALES_REP_LATITUDE_COL = config$SALES_REP_LATITUDE_COL
+SALES_REP_NAME_COL = config$SALES_REP_NAME_COL
+SALES_REP_ICON_COL = config$SALES_REP_ICON_COL
+  
 
 is.empty <- function(x){
   
@@ -38,11 +54,6 @@ is.empty <- function(x){
   
 }
 
-
-# initial_seg_cols = c("ACCOUNT_SFDC_ID","SOLDTO_GUO_NAME","SOLDTO_POSTCODE",
-#                      "LATEST_RENEWAL","EARLIEST_RENEWAL","STATUS","CCH_INFO_VALUE","CRONER_INFO_VALUE")
-
-
 #' subset global variables (as i am lazy to create reactive variables)
 only_sel1 <- only_sel2 <- sel1_and_sel2 <- NULL
 temp_selection <- NULL
@@ -52,25 +63,11 @@ if (FALSE) {
   
   #'#####################################################################################
   #' connect to database
-  
   jdbcConnection <- dbconnect::getDBConnection(dbserver = "ukkinORA03x.wkuk.net",
                                            portnumber = "1521", 
                                            dbname = "WKUKDW", 
                                            username = "DHURIS", 
                                            password = "Approach$204Fill")
-  
-  
-  
-  # Sys.setenv(JAVA_HOME='/usr/lib/jvm/java-8-openjdk-amd64')
-  # options(java.parameters="-Xmx2g")
-  # 
-  # .jinit()
-  # 
-  # jdbcDriver <- JDBC(driverClass = "oracle.jdbc.OracleDriver",
-  #                    classPath = "/usr/lib/oracle/12.1/client64/lib/ojdbc6.jar")
-  # 
-  # jdbcConnection <- dbConnect(jdbcDriver, "jdbc:oracle:thin:@//ukkinORA03x.wkuk.net:1521/WKUKDW",
-  #                             "DHURIS", "Approach$204Fill")
   
   #'#####################################################################################
   
@@ -144,15 +141,6 @@ customers$CONTRACT_ANNUAL_VALUE <- customers$CONTRACT_VALUE / customers$CONTRACT
 
 
 if(FALSE){
-
-  #x <- readLines("data/CUST_DATA2.csv")
-  
-  #customers <- data.table::fread("data/CUST_DATA2.csv")
-  
-  
-  #coordinates <- data.table::fread("ukpostcodes.csv")
-  
-  #customers <- readRDS("data/customers_anonymized.RDS")
   
   coordinates <- readRDS("data/ukpostcodes.RDS")
   
@@ -196,24 +184,11 @@ if(FALSE){
   levels(customers$TURNOVER_SIZE) <- c(levels_without_na, "Unknown")
   
   
-  
-  
   #' compute info value size categories
   max_info_val <- max(customers$ACCOUNT_INFO_VALUE, na.rm = T)
   min_info_val <- min(customers$ACCOUNT_INFO_VALUE, na.rm = T)-1
   customers$INFO_VALUE_SIZE = cut(customers$ACCOUNT_INFO_VALUE,c(min_info_val,500,1000,2500,5000,10000,max_info_val))
   levels(customers$INFO_VALUE_SIZE) = c("< £ 500","£ 501-1000","£ 1001-2500","£ 2501-5000","£ 5001-10000","£ 10000+")
-  #customers$INFO_VALUE_SIZE <- as.character(customers$INFO_VALUE_SIZE)
-  
-  
-  ### - add PROPOSITION CODE COLUMN
-  # customers$PROP_SAP_ID <- customers$LINEITEM_SAP_ID
-  # customers$PROP_SAP_ID <- gsub('.{3}$', '010', customers$PROP_SAP_ID)
-  # 
-  # propositions <- customers %>% select(LINEITEM_SAP_ID, PRODUCT_CODE) %>% filter(grepl("-000010", LINEITEM_SAP_ID))
-  # colnames(propositions) <- c("PROP_SAP_ID", "PROPOSITION_CODE")
-  # 
-  # customers <- merge(customers, propositions, by = "PROP_SAP_ID", all.x = TRUE)
   
   ## add region
   customers$SOLDTO_POSTCODE <- gsub("[^[:alnum:][:space:]]","",customers$SOLDTO_POSTCODE)
@@ -231,6 +206,7 @@ if(FALSE){
   
   if(FALSE) {
     
+    #' find adresses for unknown postcode
     unknown.addr <- customers[is.na(customers$latitude), c("SOLDTO_POSTCODE","longitude","latitude")]
     
     #unknown.addr.str <- paste(unknown.addr$SOLDTO_ADDRESS, unknown.addr$SOLDTO_TOWN, sep = ", ")
@@ -252,38 +228,12 @@ if(FALSE){
     #' save to uk postcodes
     saveRDS(coordinates, "data/ukpostcodes.RDS")
     
-    # for( i in 1:100){
-    #   
-    #   location <- unknown.addr$SOLDTO_TOWN[i]
-    #   
-    #   withTimeout({
-    #     repeat {
-    #       coods <- try(ggmap::geocode(location))
-    #       unknown.addr$longitude[i] <- coods$lon
-    #       unknown.addr$latitude[i] <- coods$lat
-    #       # Handle error from try if necessary:
-    #       if (class(coods) != "try-error") {
-    #         Sys.sleep(60)
-    #       }
-    #     }
-    #   }, timeout = 5*60, onTimeout = "warning")
-    #   
-    # }
-    
-    # unkown.coods.df <- data.frame(location = unknown.addr,
-    #                               longitude = coods$lon,
-    #                               latitude = coods$lat)
-    
   }
 
 }
 
 
-#customers <- readRDS("data/customersMAR2018.RDS")
 customers <- readRDS("data/customers_anonymized.RDS")
-
-#' accounts one record per sold to id for plotting on map
-# accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]
 
 #' ###############################################################################
 #' function to redraw map
@@ -314,9 +264,9 @@ redrawMap <- function(has.cood.account, colorBy = "Region"){
   
 }
 
-########################################################################################################
-# Code to anonymize customers data
-
+#'#######################################################################################################
+#' Code to anonymize customers data
+#'
 if(FALSE) {
   customers$CONTRACT_DESCRIPTION <- ""
   customers$CONTRACT_DESCRIPTION <- paste0(customers$CONTRACT_DESCRIPTION, c("Outsourced Services contract", "Software Development contract", "Protein Database License contract",

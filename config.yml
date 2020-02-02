@@ -1,0 +1,16 @@
+default:
+  SALES_REP_DATA: "data/salesreps.RDS"
+  CUSTOMER_UNIQUE_ID_COL: "CONTRACT_SOLDTOID"
+  CUTOMER_NAME_COL: "SOLDTO_GUO_NAME"
+  CUTOMER_SIZE_COL: "ACCOUNT_INFO_VALUE"
+  LONGITUDE_COL: "longitude"
+  LATITUDE_COL: "latitude"
+  
+  SALES_REP_LONGITUDE_COL: "longitude"
+  SALES_REP_LATITUDE_COL: "latitude"
+  SALES_REP_NAME_COL: "salesmanager"
+  SALES_REP_ICON_COL: "icons"
+  
+production:
+  trials: 30
+  dataset: "data.csv"
