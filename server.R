@@ -94,7 +94,9 @@ shinyServer(function(session, input, output) {
       return()
     
     isolate({
-      showAccountSummaryPopup(reactive.values$detailsdata, event$id, event$lat, event$lng)
+      showAccountSummaryPopup(data=reactive.values$detailsdata, 
+                              unique_id_col = CUSTOMER_UNIQUE_ID_COL,
+                              filter_value = event$id, event$lat, event$lng)
     })
   })
   
@@ -245,12 +247,13 @@ shinyServer(function(session, input, output) {
   #'##############################################################
   #'Function to generate popup content when user clicks on map
   #'
-  showAccountSummaryPopup <- function(data, soldtoid, lat, lng) {
+  showAccountSummaryPopup <- function(data, unique_id_col, filter_value, lat, lng) {
     
-    selectedAccount <- data %>%
-                        filter(CONTRACT_SOLDTOID == soldtoid) #%>%
-                        #filter(CONTRACT_STATUS %in% c("Active", "Draft"))
+    # selectedAccount <- data %>%
+    #                     filter(CONTRACT_SOLDTOID == soldtoid) #%>%
+    #                     #filter(CONTRACT_STATUS %in% c("Active", "Draft"))
     
+    selectedAccount <- data[data[[unique_id_col]] == filter_value, ]
     
     unq_shipto <- unique(selectedAccount$CONTRACT_SHIPTOID)
     unq_contracts <- unique(selectedAccount$CONTRACT_SAP_ID)
