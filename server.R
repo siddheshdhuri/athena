@@ -164,7 +164,7 @@ shinyServer(function(session, input, output) {
       proxy <- leafletProxy("map")
       proxy %>% removeMarker(layerId = as.character(bounded_layer_ids))
       
-      first_layer_ids <- subset(coordinates_df, secondLocationID %in% bounded_layer_ids)$CONTRACT_SOLDTOID
+      first_layer_ids <- subset(coordinates_df, secondLocationID %in% bounded_layer_ids)[[CUSTOMER_UNIQUE_ID_COL]]
       
       data_of_click$clickedMarker <- data_of_click$clickedMarker[!data_of_click$clickedMarker
                                                                  %in% first_layer_ids]
@@ -180,7 +180,8 @@ shinyServer(function(session, input, output) {
     selectionName <- input$selectedAccountsSelectionName
     
     #' subset data to selected points
-    selectedData <- subset(detailsdata, CONTRACT_SOLDTOID %in% data_of_click$clickedMarker)
+    selectedData <- detailsdata[detailsdata[[CUSTOMER_UNIQUE_ID_COL]] %in% data_of_click$clickedMarker, ]
+    
     
     saveRDS(selectedData, paste0("selections/",selectionName,".RDS"))
     
@@ -198,7 +199,7 @@ shinyServer(function(session, input, output) {
   #' table showing selected data set from map
   #'
   output$selectedAccountsTable <- DT::renderDataTable({
-    as.data.frame(reactive.values$selectedSet[, c(CUSTOMER_UNIQUE_ID_COL, CUSTOMER_NAME_COL, "Region", "EMP_SIZE","TURNOVER_SIZE","INFO_VALUE_SIZE","SOLDTO_POSTCODE")])
+    as.data.frame(reactive.values$selectedSet[, SELECTED_CUSTOMERS_DISPLAY_COLUMS])
   })
   
   
@@ -213,20 +214,14 @@ shinyServer(function(session, input, output) {
     newcoltocreate <- input$newColumnToCreate
     newvaluetoupdate <- input$newValueToUpdate
     
-    selectedids <- reactive.values$selectedSet$CONTRACT_SOLDTOID
+    selectedids <- reactive.values$selectedSet[[CUSTOMER_UNIQUE_ID_COL]]
     
     if(!is.empty(valuetoupdate)){
       
-      customers[customers$CONTRACT_SOLDTOID %in% selectedids, ][[coltoupdate]] <<- valuetoupdate
+      customers[customers[[CUSTOMER_UNIQUE_ID_COL]] %in% selectedids, ][[coltoupdate]] <<- valuetoupdate
       
     }
     
-    # if(!is.empty(newcoltocreate)){
-    #   
-    #   customers[[newcoltocreate]] <<- NA
-    #   customers[customers$CONTRACT_SOLDTOID %in% selectedids, ][[coltoupdate]] <<- newvaluetoupdate
-    #   
-    # }
     
     
     reactive.values$detailsdata <- customers
@@ -237,7 +232,8 @@ shinyServer(function(session, input, output) {
     #' # update global variable for coordinates df
     coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)
     
-    reactive.values$selectedSet <- subset(coordinates_df, CONTRACT_SOLDTOID %in% selectedids)
+    #reactive.values$selectedSet <- subset(coordinates_df, CONTRACT_SOLDTOID %in% selectedids)
+    reactive.values$selectedSet <- coordinates_df[coordinates_df[[CUSTOMER_UNIQUE_ID_COL]] %in% selectedids, ]
     
     saveRDS(customers,"data/customersMAR2018.RDS")
     

@@ -65,7 +65,7 @@ dashboardPage(
     menuItem("Segment Analysis", icon=icon("cube"),
       #menuItem("View Pivot", icon=icon("cube"),  tabName = "custcontractView"),
       menuItem("Set Criteria", tabName = "setCriteria", icon = icon("cubes"),
-               selectInput("xaxis","Summarise By",choices = colnames(customers) ,multiple = TRUE, selected=initial_seg_cols),
+               selectInput("xaxis","Summarise By",choices = colnames(customers) ,multiple = TRUE, selected=INITIAL_SEGMENT_COLS),
                selectInput("yaxis","Transpose Column",choices = c("NONE","BUSINESS_UNIT", "BRAND","CONTRACT_STATUS", "PRODUCT_FAMILY", "PRODUCT_CODE",
                                                                   "EMP_SIZE", "INFO_VALUE_SIZE", "TURNOVER_SIZE")
                            ,multiple = FALSE, selected = "NONE"),
