@@ -245,34 +245,48 @@ shinyServer(function(session, input, output) {
   #'
   showAccountSummaryPopup <- function(data, unique_id_col, filter_value, lat, lng) {
     
-    # selectedAccount <- data %>%
-    #                     filter(CONTRACT_SOLDTOID == soldtoid) #%>%
-    #                     #filter(CONTRACT_STATUS %in% c("Active", "Draft"))
-    
     selectedAccount <- data[data[[unique_id_col]] == filter_value, ]
     
-    unq_shipto <- unique(selectedAccount$CONTRACT_SHIPTOID)
-    unq_contracts <- unique(selectedAccount$CONTRACT_SAP_ID)
-    unq_products <- unique(selectedAccount$PRODUCT_CODE)
+    tags_list <- tagList()
     
-    contract_val <- sum(selectedAccount$CONTRACT_VALUE, na.rm = TRUE)
+    tags_list <- tagAppendChild(tags_list, 
+                                tags$strong(HTML(sprintf("%s",selectedAccount[[CUSTOMER_NAME_COL]][FIRST_ITEM]
+                                ))))
+    tags_list <- tagAppendChild(tags_list, tags$br())
     
-    content <- as.character(tagList(
+    
+    # for every unique count column add to popup
+    for(col in  POPUP_AGG_UNIQUE_COUNT_COLS){
+      unique_val <- unique(selectedAccount[[col]])
       
-      tags$strong(HTML(sprintf("%s",
-                               selectedAccount$SOLDTO_GUO_NAME[1]
-      ))), tags$br(),
-      sprintf("Ship To Contacts: %s", length(unq_shipto)),tags$br(),
-      sprintf("Contracts: %s", length(unq_contracts)),tags$br(),
-      sprintf("Products: %s", length(unq_products)),tags$br(),
-      sprintf("Contracts Value: %s", contract_val),tags$br(),
-      sprintf("Account Info Value: %s", selectedAccount$ACCOUNT_INFO_VALUE[1]),tags$br(),
-      sprintf("Address: %s", paste(selectedAccount$SOLDTO_ADDRESS[1], selectedAccount$SOLDTO_TOWN[1], selectedAccount$SOLDTO_POSTCODE[1])),
-              tags$br(),
-      sprintf("Sold to Tel: %s", selectedAccount$SOLDTO_PHONE[1]),tags$br(),
+      tags_list <- tagAppendChild(tags_list, 
+                                  sprintf(paste("Unique", col,": %s"), length(unique_val)))
+      tags_list <- tagAppendChild(tags_list, 
+                                  tags$br())
+    }
+    
+    # for every agg sum column add to popup
+    for(col in  POPUP_AGG_SUM_COLS){
+      sum_val <- sum(selectedAccount[[col]], na.rm = TRUE)
       
-      tags$br()
-    ))
+      tags_list <- tagAppendChild(tags_list, 
+                                  sprintf(paste("Total", col,": %s"), sum_val))
+      tags_list <- tagAppendChild(tags_list, 
+                                  tags$br())
+    }
+    
+    # for every agg sum column add to popup
+    for(col in  POPUP_KEEP_FIRST_COLS){
+      first_val <- selectedAccount[[col]][FIRST_ITEM]
+      
+      tags_list <- tagAppendChild(tags_list, 
+                                  sprintf(paste(col,": %s"), first_val))
+      tags_list <- tagAppendChild(tags_list, 
+                                  tags$br())
+    }
+    
+    
+    content <- as.character(tags_list)
     
     leafletProxy("map") %>% addPopups(lng, lat, content)
     
