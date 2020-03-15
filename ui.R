@@ -17,48 +17,28 @@ dashboardPage(
        ),
     
     menuItem("Filters", icon=icon("filter"),
-       #' company filters
-       menuItem("Select Emp Size", 
-                checkboxGroupInput("empsizeCheckbox", label = "", 
-                                   choices = levels(customers$EMP_SIZE), selected = levels(customers$EMP_SIZE))
-       ),
-       menuItem("Select Turnover Size", 
-                checkboxGroupInput("turnoversizeCheckbox", label = "", 
-                                   choices = levels(customers$TURNOVER_SIZE), selected = levels(customers$TURNOVER_SIZE))
-       ),
-       menuItem("Select Value Size",
-                checkboxGroupInput("infovalsizeCheckbox", label = "", 
-                                   choices = levels(customers$INFO_VALUE_SIZE), selected = levels(customers$INFO_VALUE_SIZE))
-       ),
-       menuItem("Select Region", 
-                checkboxGroupInput("regionCheckbox", label = "", 
-                                   choices = unique(customers$Region), selected = unique(customers$Region))
-       ),
-       menuItem("Select Type of Business",
-                checkboxGroupInput("businessTypeCheckbox", label = "", 
-                                   choices = unique(customers$CCH_BUSINESS_TYPE), selected = unique(customers$CCH_BUSINESS_TYPE))
-       ),
-       menuItem("Select Status of Customer",
-                checkboxGroupInput("custStatusCheckbox", label = "", 
-                                   choices = unique(customers$STATUS), selected = "LIVE")
-       ),
-       #' Contract Filters 
-       menuItem("Select contract status", 
-                checkboxGroupInput("contractStatusCheckbox", label=NULL,
-                                   choices = unique(customers$CONTRACT_STATUS), selected = c("Active","Draft") )
-       ),
-       #' Product Filters
-       menuItem("Product Brand", 
-                checkboxGroupInput("productBrandCheckbox", label=NULL,
-                                   choices = unique(customers$BRAND), selected = unique(customers$BRAND) )
-       ),
-       menuItem("Product Filter", 
-                textAreaInput("productsToMatch",label="Product Codes")
-       ),
-       #' Contact Filters
-       menuItem("Job Title filter", 
-                textAreaInput("jobsToMatch", label="Job Titles")
-       ),
+             
+             
+       lapply(FILTER_CATEGORY_COLS, function(col) {
+         menuItem(paste0('Select ', col),
+                  checkboxGroupInput(paste0(col,"Checkbox"), label = "", 
+                                     choices = unique(customers[[col]]), selected = unique(customers[[col]]))
+         )
+       }),
+           
+       lapply(FILTER_FREETEXT_COLS, function(col) {
+         menuItem(paste0('Select ', col), 
+                  textAreaInput(paste0(col,"ToMatch"),label='Enter Text')
+         )
+       }),  
+       
+       #' menuItem("Product Filter", 
+       #'          textAreaInput("productsToMatch",label="Product Codes")
+       #' ),
+       #' #' Contact Filters
+       #' menuItem("Job Title filter", 
+       #'          textAreaInput("jobsToMatch", label="Job Titles")
+       #' ),
        actionButton("applyFilter", "Apply Filter")
     ),
     
@@ -66,9 +46,8 @@ dashboardPage(
       #menuItem("View Pivot", icon=icon("cube"),  tabName = "custcontractView"),
       menuItem("Set Criteria", tabName = "setCriteria", icon = icon("cubes"),
                selectInput("xaxis","Summarise By",choices = colnames(customers) ,multiple = TRUE, selected=INITIAL_SEGMENT_COLS),
-               selectInput("yaxis","Transpose Column",choices = c("NONE","BUSINESS_UNIT", "BRAND","CONTRACT_STATUS", "PRODUCT_FAMILY", "PRODUCT_CODE",
-                                                                  "EMP_SIZE", "INFO_VALUE_SIZE", "TURNOVER_SIZE")
-                           ,multiple = FALSE, selected = "NONE"),
+               selectInput("yaxis","Transpose Column",choices = SEGMENT_Y_AXIS_COLS,
+                           multiple = FALSE, selected = "NONE"),
                
                conditionalPanel(condition = "input.yaxis != 'NONE'",
                                 selectInput("valuevar","Value",choices = c("Customers","Products","Contracts", "TOV","APVC","AOV","MOV"), 
@@ -149,16 +128,16 @@ dashboardPage(
                        ),
                        fluidRow(
                          column(width=6,
-                            htmlOutput("empSizeDonut")
+                            htmlOutput("donutChart1")
                          ),
                          column(width=6,
-                            htmlOutput("statusDonut")
+                            htmlOutput("donutChart2")
                          )
                        ),
                        fluidRow(
                          column(width=12,
                             #plotly::plotlyOutput("prodBar")
-                            htmlOutput("prodBar")
+                            htmlOutput("barChart")
                          )
                          
                        )

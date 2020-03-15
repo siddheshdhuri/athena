@@ -227,7 +227,9 @@ shinyServer(function(session, input, output) {
     reactive.values$detailsdata <- customers
     
     #' #' keep only accounts with cood for plotting on map
-    has.cood.account <- maputils::getMapPlotDF(reactive.values$detailsdata)
+    has.cood.account <- maputils::getMapPlotDF(reactive.values$detailsdata, UNIQUE_ID_COL = CUSTOMER_UNIQUE_ID_COL, 
+                                               CUTOMER_SIZE_COL = CUTOMER_SIZE_COL, 
+                                               LONGITUDE_COL = LONGITUDE_COL, LATITUDE_COL = LATITUDE_COL)
     
     #' # update global variable for coordinates df
     coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)
@@ -247,44 +249,7 @@ shinyServer(function(session, input, output) {
     
     selectedAccount <- data[data[[unique_id_col]] == filter_value, ]
     
-    tags_list <- tagList()
-    
-    tags_list <- tagAppendChild(tags_list, 
-                                tags$strong(HTML(sprintf("%s",selectedAccount[[CUSTOMER_NAME_COL]][FIRST_ITEM]
-                                ))))
-    tags_list <- tagAppendChild(tags_list, tags$br())
-    
-    
-    # for every unique count column add to popup
-    for(col in  POPUP_AGG_UNIQUE_COUNT_COLS){
-      unique_val <- unique(selectedAccount[[col]])
-      
-      tags_list <- tagAppendChild(tags_list, 
-                                  sprintf(paste("Unique", col,": %s"), length(unique_val)))
-      tags_list <- tagAppendChild(tags_list, 
-                                  tags$br())
-    }
-    
-    # for every agg sum column add to popup
-    for(col in  POPUP_AGG_SUM_COLS){
-      sum_val <- sum(selectedAccount[[col]], na.rm = TRUE)
-      
-      tags_list <- tagAppendChild(tags_list, 
-                                  sprintf(paste("Total", col,": %s"), sum_val))
-      tags_list <- tagAppendChild(tags_list, 
-                                  tags$br())
-    }
-    
-    # for every agg sum column add to popup
-    for(col in  POPUP_KEEP_FIRST_COLS){
-      first_val <- selectedAccount[[col]][FIRST_ITEM]
-      
-      tags_list <- tagAppendChild(tags_list, 
-                                  sprintf(paste(col,": %s"), first_val))
-      tags_list <- tagAppendChild(tags_list, 
-                                  tags$br())
-    }
-    
+    tags_list <- get_tag_list(selectedAccount)
     
     content <- as.character(tags_list)
     
@@ -301,25 +266,32 @@ shinyServer(function(session, input, output) {
     
     selectedAccount <- reactive.values$selectedCust
     
-    output$accountSummary <- renderUI( list(tags$h1( selectedAccount$SOLDTO_GUO_NAME[1] ),
-                                            tags$b( paste( "SalesForce Id:", selectedAccount$ACCOUNT_SFDC_ID[1])),
-                                            tags$br(),
-                                            tags$b( paste( "SAP Id:", paste(unique(selectedAccount$CONTRACT_SOLDTOID),collapse = ", ")) ),
-                                            tags$h3( paste("CCH Info. Value: £",selectedAccount$CCH_INFO_VALUE[1]) ),
-                                            tags$h3( paste("Croner Info. Value: £",selectedAccount$CRONER_INFO_VALUE[1]) ),
-                                            tags$h4( paste("Earliest Renewal: ",selectedAccount$EARLIEST_RENEWAL[1])),
-                                            tags$h4( paste("Latest Renewal: ",selectedAccount$LATEST_RENEWAL[1]))
-                                            ) )
+    if (is.empty(selectedAccount)){
+      output$accountSummary <- renderUI(tags$h4('Select an account from the map and click Account Details to view more details of the account'))
+    }
     
-    accountContracts <- selectedAccount[!duplicated(selectedAccount$CONTRACT_SAP_ID) ,
-                                        c("CONTRACT_SAP_ID","CONTRACT_DESCRIPTION","CONTRACT_STATUS",
-                                          "CONTRACT_VALUE","CONTRACT_STARTDATE","CONTRACT_ENDDATE")]
+    tags_list <- get_tag_list(selectedAccount)
     
-    accountProducts <- selectedAccount[!duplicated(selectedAccount$PRODUCT_CODE) ,
-                                       c("PRODUCT_CODE","PRODUCT_FAMILY")]
+    output$accountSummary <- renderUI(tags_list)
     
-    accountContacts <- selectedAccount[!duplicated(selectedAccount$CONTRACT_SHIPTOID) ,
-                                       c("SHIPTO_FIRST_NAME","SHIPTO_LAST_NAME", "SHIPTO_EMAIL", "SHIPTO_PHONE")]
+    # output$accountSummary <- renderUI( list(tags$h1( selectedAccount[[CUTOMER_NAME_COL]][1] ),
+    #                                         tags$b( paste( CUSTOMER_UNIQUE_ID_COL + " :", selectedAccount[[CUSTOMER_UNIQUE_ID_COL]][1])),
+    #                                         tags$br(),
+    #                                         #tags$b( paste( "SAP Id:", paste(unique(selectedAccount$CONTRACT_SOLDTOID),collapse = ", ")) ),
+    #                                         tags$h3( paste("CCH Info. Value: £",selectedAccount$CCH_INFO_VALUE[1]) ),
+    #                                         tags$h3( paste("Croner Info. Value: £",selectedAccount$CRONER_INFO_VALUE[1]) ),
+    #                                         tags$h4( paste("Earliest Renewal: ",selectedAccount$EARLIEST_RENEWAL[1])),
+    #                                         tags$h4( paste("Latest Renewal: ",selectedAccount$LATEST_RENEWAL[1]))
+    #                                         ) )
+    
+    accountContracts <- selectedAccount[!duplicated(selectedAccount[[CONTRACT_UNIQUE_ID_COL]]) ,
+                                        SUMMARY_CONTRACTS_PREVIEW_COLS]
+    
+    accountProducts <- selectedAccount[!duplicated(selectedAccount[[PRODUCT_UNIQUE_ID_COL]]) ,
+                                       SUMMARY_PRODUCT_PREVIEW_COLS]
+    
+    accountContacts <- selectedAccount[!duplicated(selectedAccount[[CONTRACT_UNIQUE_ID_COL]]) ,
+                                       SUMMARY_CONTACT_PREVIEW_COLS]
     
     
     output$contractsAtAccount <- DT::renderDataTable(accountContracts)
@@ -340,17 +312,17 @@ shinyServer(function(session, input, output) {
     selectedCustomers <- reactive.values$detailsdata
     
     #' one per account
-    accounts <- selectedCustomers[ !duplicated(selectedCustomers$CONTRACT_SOLDTOID) , ]
+    accounts <- selectedCustomers[ !duplicated(selectedCustomers[[CUSTOMER_UNIQUE_ID_COL]]) , ]
     
     #' one per contract
-    contracts <- selectedCustomers[ !duplicated(selectedCustomers$CONTRACT_SFDC_ID) , ]
+    contracts <- selectedCustomers[ !duplicated(selectedCustomers[[CONTRACT_UNIQUE_ID_COL]]) , ]
     
     ################################- Value Boxes -###############################
     
     #' Value box showing number of users
     output$customersValueBox <- renderValueBox({
       valueBox(
-        length(unique(selectedCustomers$ACCOUNT_SFDC_ID)), "Accounts", icon = icon("building"),
+        length(unique(selectedCustomers[[CUSTOMER_UNIQUE_ID_COL]])), "Accounts", icon = icon("building"),
         color = "teal"
       )
     })
@@ -358,7 +330,7 @@ shinyServer(function(session, input, output) {
     #' Value box showing number of users
     output$contractsValueBox <- renderValueBox({
       valueBox(
-        length(unique(selectedCustomers$CONTRACT_SHIPTOID)), "Contacts", icon = icon("users"),
+        length(unique(selectedCustomers[[CONTACT_UNIQUE_ID_COL]])), "Contacts", icon = icon("users"),
         color = "teal"
       )
     })
@@ -367,7 +339,9 @@ shinyServer(function(session, input, output) {
     output$totalValueBox <- renderValueBox({
       
       valueBox(
-        paste("£ ",format(round(sum(accounts$ACCOUNT_INFO_VALUE, na.rm = TRUE)/1000000,1), big.mark=",")," M",sep=""), "Total Value", icon = icon("gbp"),
+        paste(CURRENCY, 
+              format(round(sum(accounts[[CONTRACT_VALUE_COL]], na.rm = TRUE)/VALUE_DENOMINATION,1), big.mark=","),VALUE_IN, sep=" "), 
+        "Total Value", icon = icon(CURRENCY_ICON),
         color = "teal"
       )
     })
@@ -376,50 +350,49 @@ shinyServer(function(session, input, output) {
     output$APVCValueBox <- renderValueBox({
       
       valueBox(
-        paste("£",ceiling(sum(accounts$ACCOUNT_INFO_VALUE, na.rm = TRUE)/nrow(accounts))), "APVC", icon = icon("money"),
+        paste(CURRENCY,ceiling(sum(accounts[[CONTRACT_VALUE_COL]], na.rm = TRUE)/nrow(accounts))), "APVC", icon = icon("money"),
         color = "teal"
       )
     })
     
-    #' Value box showing APVC
-    output$emailValueBox <- renderValueBox({
+    if (!is.empty(CONTACT_PHONE_COL)) {
+      #' Value box showing APVC
+      output$phoneValueBox <- renderValueBox({
+        
+        valueBox(
+          length(unique(selectedCustomers[[CONTACT_PHONE_COL]])), "Phone Contacts", icon = icon("phone"),
+          color = "teal"
+        )
+      })
       
-      valueBox(
-        length(unique(selectedCustomers$SOLDTO_PHONE)), "Account Phone", icon = icon("phone"),
-        color = "teal"
-      )
-    })
+    }
     
-    #' Value box showing APVC
-    output$phoneValueBox <- renderValueBox({
+    if (!is.empty(CONTACT_EMAIL_COL)){
+      #' Value box showing APVC
+      output$emailValueBox <- renderValueBox({
+        
+        valueBox(
+          length(unique(selectedCustomers[[CONTACT_EMAIL_COL]])), "Email Contacts", icon = icon("envelope"),
+          color = "teal"
+        )
+      })
       
-      valueBox(
-        length(unique(selectedCustomers$SHIPTO_EMAIL)), "Contact Emails", icon = icon("envelope"),
-        color = "teal"
-      )
-    })
+    }
+    
+    
     
     
     ############################### - pie charts - ###############################
     
-    # output$empSizeDonut <- plotly::renderPlotly({
-    #   
-    #   sizeTable <- as.data.frame(table(accounts$EMP_SIZE))
-    #   
-    #   p <- sizeTable %>%
-    #     plot_ly(labels = ~Var1, values = ~Freq) %>%
-    #     add_pie(hole = 0.3)
-    # })
-    
-    output$empSizeDonut <- googleVis::renderGvis({
+    output$donutChart1 <- googleVis::renderGvis({
       
-      sizeTable <- as.data.frame(table(accounts$EMP_SIZE))
+      sizeTable <- as.data.frame(table(accounts[[DONUT_ONE_COL]]))
       
       doughnut <- gvisPieChart(sizeTable, 
                                options=list(
                                  #width=250,
                                  #height=250,
-                                 title='Employee Sizes',
+                                 title=DONUT_ONE_COL,
                                  legend='none',
                                  #colors="['black','orange', 'blue', 
                                  #'red', 'purple', 'green']",
@@ -434,24 +407,15 @@ shinyServer(function(session, input, output) {
     })
     
     
-    # output$statusDonut <- plotly::renderPlotly({
-    #   
-    #   sizeTable <- as.data.frame(table(accounts$STATUS))
-    #   
-    #   p <- sizeTable %>%
-    #     plot_ly(labels = ~Var1, values = ~Freq) %>%
-    #     add_pie(hole = 0.3)
-    # })
-    
-    output$statusDonut <- googleVis::renderGvis({
+    output$donutChart2 <- googleVis::renderGvis({
       
-      statusTable <- as.data.frame(table(accounts$STATUS))
+      statusTable <- as.data.frame(table(accounts[[DONUT_TWO_COL]]))
       
       status_doughnut <- gvisPieChart(statusTable, 
                                options=list(
                                  # width=250,
                                  # height=250,
-                                  title='Account Status',
+                                  title=DONUT_TWO_COL,
                                   legend='none',
                                  #colors="['black','orange', 'blue', 
                                  #'red', 'purple', 'green']",
@@ -466,7 +430,7 @@ shinyServer(function(session, input, output) {
     })
     
     
-    output$prodBar <- googleVis::renderGvis({
+    output$barChart <- googleVis::renderGvis({
       
         proddf <- as.data.frame(table(contracts$PRODUCT_CODE))
         
@@ -476,7 +440,7 @@ shinyServer(function(session, input, output) {
         
         googleVis::gvisColumnChart(proddf,
                                 options = list(colors="['blue']",
-                                               title = "Top 10 Products"))
+                                               title = paste("Top 10",BAR_CHART_COL)))
         
     })
     
@@ -496,54 +460,36 @@ shinyServer(function(session, input, output) {
   
   
   observeEvent(input$applyFilter,{
+    # Whenever we apply filters we apply to global customers df
+    # to avoid narrowing to smaller and samller df that can confuse user
+    thiscustomers <- customers
     
     withProgress(message="Replotting Map...",{
       
-      empSizes <- input$empsizeCheckbox
-      turnoverSizes <- input$turnoversizeCheckbox
-      infovalsizes <- input$infovalsizeCheckbox
-      businessTypes <- input$businessTypeCheckbox
-      custStatus <- input$custStatusCheckbox
-      contractStatus <- isolate(input$contractStatusCheckbox)
-      prodBrands <- isolate(input$productBrandCheckbox)
-      prodCodes <- isolate(input$productsToMatch)
-      jobTitles <- isolate(input$jobsToMatch)
-      regions <- isolate(input$regionCheckbox)
+      for (filter_col in FILTER_CATEGORY_COLS) {
+        selectedCategories = input[[paste0(filter_col, "Checkbox")]]
+        thiscustomers <- thiscustomers[thiscustomers[[filter_col]] %in% selectedCategories, ]
+      }
       
-      customers <- customers %>%
-        dplyr::filter( EMP_SIZE %in% empSizes & 
-                         TURNOVER_SIZE %in% turnoverSizes &
-                         INFO_VALUE_SIZE %in% infovalsizes & 
-                         CCH_BUSINESS_TYPE %in% businessTypes &
-                         STATUS %in% custStatus & 
-                         CONTRACT_STATUS %in% contractStatus &
-                         BRAND %in% prodBrands &
-                         Region %in% regions &
-                         PRODUCT_CODE %contains% prodCodes &
-                         SHIPTO_JOB_TITLE %containswithspace% jobTitles )
+      for (filter_col in FILTER_FREETEXT_COLS) {
+        selectedCategories = input[[paste0(filter_col, "ToMatch")]]
+        thiscustomers <- thiscustomers[thiscustomers[[filter_col]] %containswithspace% selectedCategories, ]
+      }
       
-      #' apply filter to global customers df
-      # customers <- customers %>%
-      #   dplyr::filter( EMP_SIZE %in% empSizes ) %>%
-      #   dplyr::filter( TURNOVER_SIZE %in% turnoverSizes ) %>%
-      #   dplyr::filter( INFO_VALUE_SIZE %in% infovalsizes ) %>%
-      #   dplyr::filter( CCH_BUSINESS_TYPE %in% businessTypes ) %>%
-      #   dplyr::filter( STATUS %in% custStatus ) %>%
-      #   dplyr::filter( CONTRACT_STATUS %in% contractStatus ) %>%
-      #   dplyr::filter( PRODUCT_CODE %contains% prodCodes) %>%
-      #   dplyr::filter( SHIPTO_JOB_TITLE %containswithspace% jobTitles )
-      
-      #accounts <- customers[ !duplicated(customers$CONTRACT_SOLDTOID) , ]
       
       #' set filtered data to reactive df
-      reactive.values$detailsdata <- customers
+      reactive.values$detailsdata <- thiscustomers
       
       #' #' keep only accounts with cood for plotting on map
-      has.cood.account <- maputils::getMapPlotDF(reactive.values$detailsdata)
+      has.cood.account <- maputils::getMapPlotDF(thiscustomers, UNIQUE_ID_COL = CUSTOMER_UNIQUE_ID_COL, 
+                                                 CUTOMER_SIZE_COL = CUTOMER_SIZE_COL, 
+                                                 LONGITUDE_COL = LONGITUDE_COL, LATITUDE_COL = LATITUDE_COL)
+      
       
       #' # update global variable for coordinates df
-      coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)
-      
+      if (nrow(has.cood.account) > 0){
+        coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)
+      }
       
       redrawMap(has.cood.account, input$colorBy)
       
@@ -557,24 +503,23 @@ shinyServer(function(session, input, output) {
   #' 
   observeEvent(input$filterByName,{
     
-    withProgress(message="Findinng accounts by name", {
+    withProgress(message="Finding accounts by name", {
       
       searchterm <- input$searchTerm
-      customers <- reactive.values$detailsdata
-      print(searchterm)
-      customers <- customers %>%
-        dplyr::filter( SOLDTO_GUO_NAME %containswithspace% searchterm )
+      this_customers <- reactive.values$detailsdata
       
-      #dplyr::filter( grepl(pattern = searchterm, x = customers$SOLDTO_GUO_NAME, ignore.case = T) )
+      this_customers <- thiscustomers[thiscustomers[[CUSTOMER_NAME_COL]] %containswithspace% searchterm, ]
       
       if(nrow(customers) < 1) {
         return(NULL)
       }
       
-      reactive.values$detailsdata <- customers
+      reactive.values$detailsdata <- this_customers
       
       #' #' keep only accounts with cood for plotting on map
-      has.cood.account <- maputils::getMapPlotDF(reactive.values$detailsdata)
+      has.cood.account <- maputils::getMapPlotDF(this_customers, UNIQUE_ID_COL = CUSTOMER_UNIQUE_ID_COL, 
+                                                 CUTOMER_SIZE_COL = CUTOMER_SIZE_COL, 
+                                                 LONGITUDE_COL = LONGITUDE_COL, LATITUDE_COL = LATITUDE_COL)
       
       #' # update global variable for coordinates df
       coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)
@@ -628,6 +573,18 @@ shinyServer(function(session, input, output) {
     
   })
   
+  getAggData <- function (aggBy, data)   {
+    agg.by <- lapply(aggBy, as.symbol)
+    agg.data <- data %>% group_by_(.dots = agg.by) %>% select(one_of(SEGMENT_AGG_COLS)) %>% summarise(Customers = n_distinct(as.symbol(CUSTOMER_UNIQUE_ID_COL)),
+                                                                                                      Contracts = n_distinct(as.symbol(CONTRACT_UNIQUE_ID_COL)),
+                                                                                                      Products = n_distinct(as.symbol(PRODUCT_UNIQUE_ID_COL)),
+                                                                                                      TOV = sum(CONTRACT_VALUE,  na.rm = TRUE),
+                                                                                                      APVC = sum(CONTRACT_VALUE,  na.rm = TRUE) / Customers
+                                                                                                      )
+    
+    return(agg.data)
+  }
+  
   
   #' #########################################################
   #' Customer Segment Pivot
@@ -642,6 +599,8 @@ shinyServer(function(session, input, output) {
       
       customers <- reactive.values$detailsdata
       #customers <- customers[ !duplicated(customers$CONTRACT_SFDC_ID) , ]
+      
+      crosstabutils::getAggData()
       
       display.table <<- withProgress(message = "in progress",
                                      detail = "This may take a while...",{
@@ -662,47 +621,33 @@ shinyServer(function(session, input, output) {
   #' 
   output$barChartPlot <- plotly::renderPlotly({
     
-    # tol21rainbow= c("#771155", "#AA4488", "#CC99BB", "#114477", "#4477AA", "#77AADD", "#117777", "#44AAAA", 
-    #                 "#77CCCC", "#117744", "#44AA77", "#88CCAA", "#777711", "#AAAA44", "#DDDD77", "#774411", 
-    #                 "#AA7744", "#DDAA77", "#771122", "#AA4455", "#DD7788")
-    # 
-    # par(las=2, # make label text perpendicular to axis
-    #     mar=c(5,10,2,1), # increase y-axis margin
-    #     mfrow = c(1:2), # plot side by side
-    #     ps = 8, cex = 1, cex.main = 1) 
+    #@ TODO
     
-    #' get filtered customer data
-    customers <- reactive.values$detailsdata
-    
-    #' deduplicate
-    plot_data <- customers[ !duplicated(customers$CONTRACT_SFDC_ID) , ]
-    plot_data$INDUSTRY[is.na(plot_data$INDUSTRY)] <- "Unknown"
-    plot_data <- plot_data %>% dplyr::filter(INDUSTRY != "Unknown") %>% dplyr::filter(EMP_SIZE != "Unknown")
-    
-    counts <- table(plot_data$EMP_SIZE, plot_data$INDUSTRY)
-    counts <- table(plot_data$INDUSTRY, plot_data$EMP_SIZE)
-    counts <- as.data.frame(counts)
-    
-    p <- counts %>% plot_ly(x = ~Var1, y = ~Freq, color = ~Var2)
-    
-    # counts <- as.data.frame.matrix(counts)
-    # counts <- setDT(counts, keep.rownames = TRUE)[]
-    # colnames(counts)[1] <- "EMP_SIZE"
-    # p <- plot_ly(counts, x = ~EMP_SIZE, y = ~as.symbol(colnames(counts)[2]), type = 'bar', name = colnames(counts)[2])
-    # 
-    # for(i in 3:6){
-    #   p <- p %>% add_trace(y = ~as.symbol(colnames(counts)[i]), name = colnames(counts)[i])
-    # }
-    # 
-    # p <- p %>% layout(yaxis = list(title = 'Count'), barmode = 'stack')
-    
-    # Add 5 trace to this graphic with a loop
-      #add_trace(y = ~LA_Zoo, name = 'LA Zoo') %>%
-      
-    # #' Basic stacked bar plot
-    # barplot(counts, main="Barchart",
-    #         xlab="Number of Accounts", col=tol21rainbow, horiz = TRUE)
-    # legend("topright", rownames(counts), bg = "transparent", fill = tol21rainbow)
+    #' # tol21rainbow= c("#771155", "#AA4488", "#CC99BB", "#114477", "#4477AA", "#77AADD", "#117777", "#44AAAA", 
+    #' #                 "#77CCCC", "#117744", "#44AA77", "#88CCAA", "#777711", "#AAAA44", "#DDDD77", "#774411", 
+    #' #                 "#AA7744", "#DDAA77", "#771122", "#AA4455", "#DD7788")
+    #' # 
+    #' # par(las=2, # make label text perpendicular to axis
+    #' #     mar=c(5,10,2,1), # increase y-axis margin
+    #' #     mfrow = c(1:2), # plot side by side
+    #' #     ps = 8, cex = 1, cex.main = 1) 
+    #' 
+    #' #' get filtered customer data
+    #' customers <- reactive.values$detailsdata
+    #' 
+    #' #' deduplicate
+    #' plot_data <- customers[ !duplicated(customers[[CUSTOMER_UNIQUE_ID_COL]]) , ]
+    #' 
+    #' bar_char_col = BAR_CHART_COL[1]
+    #' 
+    #' plot_data[[bar_char_col]][is.na(plot_data[[bar_char_col]])] <- "Unknown"
+    #' plot_data <- plot_data %>% dplyr::filter(INDUSTRY != "Unknown") %>% dplyr::filter(EMP_SIZE != "Unknown")
+    #' 
+    #' counts <- table(plot_data$EMP_SIZE, plot_data$INDUSTRY)
+    #' counts <- table(plot_data$INDUSTRY, plot_data$EMP_SIZE)
+    #' counts <- as.data.frame(counts)
+    #' 
+    #' p <- counts %>% plot_ly(x = ~Var1, y = ~Freq, color = ~Var2)
     
   })
   
@@ -722,7 +667,7 @@ shinyServer(function(session, input, output) {
       yvar <- isolate(input$heatmapYVar)
       
       #' deduplicate
-      plot_data <- customers[ !duplicated(customers$CONTRACT_SFDC_ID) , ]
+      plot_data <- customers[ !duplicated(customers[[CUSTOMER_UNIQUE_ID_COL]]) , ]
       
       plot_data <- plot_data[,c(xvar, yvar)]
       plot_data[] <- lapply(plot_data, as.character)
@@ -732,21 +677,8 @@ shinyServer(function(session, input, output) {
       
       plot_data <- plot_data[(plot_data[[xvar]] != "Unknown" & plot_data[[yvar]] != "Unknown"), ]
       
-      # plot_data <- plot_data %>% 
-      #   dplyr::filter(as.symbol(xvar) != "Unknown") %>% 
-      #   dplyr::filter(as.symbol(yvar) != "Unknown")
-      
       counts <- table(plot_data[[xvar]], plot_data[[yvar]])
       
-      # vals <- unique(scales::rescale(c(counts)))
-      # o <- order(vals, decreasing = FALSE)
-      # cols <- scales::col_numeric("Reds", domain = NULL)(vals)
-      # colz <- setNames(data.frame(vals[o], cols[o]), NULL)
-      
-      # p <- plot_ly(
-      #   x = colnames(counts), y = rownames(counts),
-      #   z = counts, type = "heatmap", colorscale = colz
-      # )
       
       p <- heatmaply(as.data.frame.matrix(counts), 
                      draw_cellnote = TRUE, colors = Reds(10),
@@ -758,25 +690,7 @@ shinyServer(function(session, input, output) {
     
   })
   
-  #' output$heatMapPlot <- renderPlot({
-  #'   
-  #'   #' get filtered customer data
-  #'   customers <- reactive.values$detailsdata
-  #'   
-  #'   #' deduplicate
-  #'   plot_data <- customers[ !duplicated(customers$CONTRACT_SFDC_ID) , ]
-  #'   plot_data$INDUSTRY[is.na(plot_data$INDUSTRY)] <- "Unknown"
-  #'   plot_data <- plot_data %>% dplyr::filter(INDUSTRY != "Unknown") %>% dplyr::filter(EMP_SIZE != "Unknown")
-  #'   
-  #'   #counts <- table(plot_data$INDUSTRY, plot_data$EMP_SIZE)
-  #'   
-  #'   plotheatmap(plot_data, NULL, var1="EMP_SIZE", var2="STATUS")
-  #'   
-  #'   
-  #' })
-  
-  
-  
+ 
   
   #' #########################################################
   #' Export details 
@@ -789,7 +703,7 @@ shinyServer(function(session, input, output) {
       
       data <- reactive.values$detailsdata
       
-      data <- data[ !duplicated(data$CONTRACT_SHIPTOID), ]
+      data <- data[ !duplicated(data[[CONTRACT_UNIQUE_ID_COL]]), ]
       
       data <- sapply(data,as.character)
       data[is.na(data)] <- ""
@@ -813,19 +727,6 @@ shinyServer(function(session, input, output) {
     }
   )
   
-  #' #########################################################
-  #' ui summary
-  #' 
-  # output$countsSummary <- shiny::renderUI({
-  #   
-  #   numcust <- length(unique(reactive.values$detailsdata$CONTRACT_SOLDTOID))
-  #   numcontacts <- length(unique(reactive.values$detailsdata$CONTRACT_SHIPTOID))
-  #   
-  #   uilist <- list(tags$h3(paste("Customers:", numcust)),
-  #                  tags$h4(paste("Contacts:", numcontacts)))
-  #   
-  #   return(uilist)
-  # })
   
   #'############################################################################
   #' observerEvent for the loadSelection action button
@@ -856,7 +757,9 @@ shinyServer(function(session, input, output) {
       reactive.values$detailsdata <- selections.df
       
       #' #' keep only accounts with cood for plotting on map
-      has.cood.account <- maputils::getMapPlotDF(reactive.values$detailsdata)
+      has.cood.account <- maputils::getMapPlotDF(customers, UNIQUE_ID_COL = CUSTOMER_UNIQUE_ID_COL, 
+                                                 CUTOMER_SIZE_COL = CUTOMER_SIZE_COL, 
+                                                 LONGITUDE_COL = LONGITUDE_COL, LATITUDE_COL = LATITUDE_COL)
       
       #' # update global variable for coordinates df
       coordinates_df <<- SpatialPointsDataFrame(has.cood.account[,c('longitude', 'latitude')] , has.cood.account)
@@ -906,13 +809,15 @@ shinyServer(function(session, input, output) {
       #' set the environment df to selected selections
       temp_selection <<- rbind(selection1,selection2)
       
+      unique_sel1 <- unique(selection1[[CONTRACT_UNIQUE_ID_COL]])
+      unique_sel2 <- unique(selection2[[CONTRACT_UNIQUE_ID_COL]])
       
-      only_sel1 <<- setdiff(unique(selection1$ACCOUNT_SFDC_ID), unique(selection2$ACCOUNT_SFDC_ID))
-      only_sel2 <<- setdiff(unique(selection2$ACCOUNT_SFDC_ID), unique(selection1$ACCOUNT_SFDC_ID))
+      only_sel1 <<- setdiff(unique_sel1, unique_sel2)
+      only_sel2 <<- setdiff(unique_sel2, unique_sel1)
       
-      sel1_and_sel2 <<- intersect(unique(selection1$ACCOUNT_SFDC_ID), unique(selection2$ACCOUNT_SFDC_ID))
+      sel1_and_sel2 <<- intersect(unique_sel1, unique_sel2)
       
-      sel1_union_sel2 <- union(unique(selection1$ACCOUNT_SFDC_ID), unique(selection2$ACCOUNT_SFDC_ID))
+      sel1_union_sel2 <- union(unique_sel1, unique_sel2)
       
       
       print(paste(" only selection 1:", length(only_sel1)))
@@ -961,22 +866,6 @@ shinyServer(function(session, input, output) {
       
       output$downloadSetsButton <- shiny::renderUI({
         
-        # list(
-        # 
-        #   column(width=3,
-        #          downloadButton("onlySetA", paste("Only",selection1))
-        #   ),
-        #   column(width=3,
-        #          downloadButton("setAandsetB", paste(selection1,"And",selection2))
-        #   ),
-        #   column(width=3,
-        #          downloadButton("onlySetB", paste("Only",selection2))
-        #   ),
-        #   column(width=3,
-        #          downloadButton("setAorsetB", paste(selection1,"Union",selection2))
-        #   )
-        # )
-        
         buttonname1 <- gsub(paste("Only",input$selection1,"(",length(only_sel1),")"),pattern=".RDS",replacement ="",fixed = TRUE)
         buttonname2 <- gsub(paste(input$selection2,"And",input$selection1, "(",length(sel1_and_sel2),")"),pattern=".RDS",replacement ="",fixed = TRUE)
         buttonname3 <- gsub(paste("Only",input$selection2, "(",length(only_sel2),")"),pattern=".RDS",replacement ="",fixed = TRUE)
@@ -1021,9 +910,9 @@ shinyServer(function(session, input, output) {
     
     print(length(idstoset))
     
+    this_customers <- customers
     
-    reactive.values$detailsdata <- temp_selection %>%
-                                      dplyr::filter( ACCOUNT_SFDC_ID %in% idstoset )
+    reactive.values$detailsdata <- this_customers[this_customers[[CUSTOMER_UNIQUE_ID_COL]] %in% idstoset, ]
     
     updateTabItems(session, "tabsmenu", selected = "customermap")
     
