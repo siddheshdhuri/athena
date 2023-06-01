@@ -69,10 +69,12 @@ dashboardPage(
       menuItem("Sankey", tabName = "SankeyChart", icon=icon("xing"))
     ),
     
-    menuItem("Venn", icon=icon("cc-mastercard"),  tabName = "venns"
-             #menuSubItem("Create Venn", tabName = "venns")
-             #downloadButton("exportDetails", "Export details")
-    ),
+    # menuItem("Venn", icon=icon("cc-mastercard"),  tabName = "venns"
+    #          #menuSubItem("Create Venn", tabName = "venns")
+    #          #downloadButton("exportDetails", "Export details")
+    # ),
+    
+    menuItem("Intersections", icon=icon("cc-mastercard"),  tabName = "upsets"),
     
     menuItem("Selections", icon=icon("database"),
              menuItem("Load Selection", icon=icon("cube"), 
@@ -88,6 +90,8 @@ dashboardPage(
              menuSubItem("View details", icon=icon("cube"), tabName = "tableView"),
              downloadButton("exportDetails", "Export details")
     ),
+    
+    menuItem("Talk to data", icon=icon("android"), tabName = "talk_to_data"),
     
     tags$br(),
     tags$br(),
@@ -238,7 +242,8 @@ dashboardPage(
               div(style = 'overflow-x: scroll', DT::dataTableOutput("custPivot"))
       ),
       tabItem("viewSegments",
-              div(style = 'overflow-x: scroll', DT::dataTableOutput("custSegPivot"))
+              div(style = 'overflow-x: scroll', DT::dataTableOutput("custSegPivot")),
+              actionButton('go_to_talk_to_data', "Talk to data", icon = icon("android"))
       ),
       tabItem("barChart",
               #plotOutput("barChartPlot"),
@@ -282,6 +287,91 @@ dashboardPage(
           # fluidRow(
           #   uiOutput("downloadSetsButton")
           # )
+      ),
+      
+      tabItem("upsets",
+              fluidRow(
+                column(width=4,
+                       selectInput("selected_sets","Select Datasets",choices = list.files("./selections", pattern = ".RDS") ,multiple = TRUE)
+                ),
+                column(width=4,
+                       selectInput("selected_upset_chart_type","Select Chart Type",choices =c("Venn", "Upset")  ,multiple = FALSE, selected = "Venn")
+                ),
+                column(width=4,
+                       actionButton("draw_upset","Draw Diagram")
+                )
+              ),
+              fluidRow(
+                column(width=8,
+                       upsetjs::upsetjsOutput("upset_chart")   
+                )
+                
+              )
+              # fluidRow(
+              #   uiOutput("downloadSetsButton")
+              # )
+      ),
+      
+      tabItem("talk_to_data",
+              
+              fluidRow(
+                
+                tabBox(
+                  width = 12, 
+                  
+                  tabPanel("Load data from CSV", 
+                           fluidRow(
+                             column(4,
+                                    fileInput('inputFile', 'Choose CSV File', 
+                                              accept=c('text/csv', 
+                                                       'text/comma-separated-values,text/plain', 
+                                                       '.csv'))
+                             ),
+                             column(1, actionButton("load_csv_data", "Load Data"))
+                           ),
+                           fluidRow(
+                             box(id = "data_table_box",
+                              DT::dataTableOutput("data_table"),
+                              collapsible = TRUE
+                             )
+                           )
+                           
+                  ),
+                  tabPanel("Load data from PDF",
+                           
+                           fluidRow(
+                             column(4,
+                                    fileInput('inputPDF', 'Choose PDF File', multiple = TRUE)
+                             ),
+                             column(1, actionButton("load_pdf_data", "Load Data"))
+                           ),
+                           fluidRow(
+                             box(id = "text_table_box",
+                                 DT::dataTableOutput("text_table"),
+                                 collapsible = TRUE
+                             )
+                             
+                           )
+                           
+                  )
+                  
+                ),
+                
+                
+                
+                textInput("question", "Ask me anything"),  
+                radioButtons(
+                  inputId = "about",
+                  label = "About: ",
+                  choices = c("data table", "text file", "in general"), inline=TRUE
+                ),
+                actionButton("go", "Go"),
+                
+                tableOutput("head"),
+                textOutput("prompt"),
+                DT::dataTableOutput("chat_table"),
+                downloadButton("download_as_ppt", "Download")
+              )
       )
       
     ) # end tabItems

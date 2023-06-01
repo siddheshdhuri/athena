@@ -20,6 +20,10 @@ tol21rainbow= c("#771155", "#CC99BB", "#AA4488", "#771122", "#AA4455", "#774411"
                 "#88CCAA", "#777711", "#AAAA44", "#DDDD77", "#114477", "#4477AA", "#77AADD", "#117777", "#44AAAA", 
                 "#77CCCC", "#117744", "#44AA77" )
 
+
+############# - NA Patters to ignore while reding text file - ################################
+na.patterns <- "#REF!|#N/A|\\(blank\\)"
+
 source("utils/helpe.R")
 source("utils/config.R")
 
@@ -311,28 +315,28 @@ if(FALSE) {
 ###############################################################
 salesIcons <- iconList(
   sdIcon = makeIcon(
-    iconUrl = "www/img/sd.jpg",
-    iconWidth = 30, iconHeight = 30
+    iconUrl = "www/img/sr1.jpeg",
+    iconWidth = 50, iconHeight = 50
   ),
   svIcon = makeIcon(
-    iconUrl = "www/img/sv.jpeg",
-    iconWidth = 30, iconHeight = 30
+    iconUrl = "www/img/sr2.jpeg",
+    iconWidth = 50, iconHeight = 50
   ),
   hmIcon = makeIcon(
-    iconUrl = "www/img/hm.jpg",
-    iconWidth = 30, iconHeight = 30
+    iconUrl = "www/img/sr3.jpeg",
+    iconWidth = 50, iconHeight = 50
   ),
   skIcon = makeIcon(
-    iconUrl = "www/img/sk.jpg",
-    iconWidth = 30, iconHeight = 30
+    iconUrl = "www/img/sr4.jpeg",
+    iconWidth = 50, iconHeight = 50
   ),
   lpIcon = makeIcon(
-    iconUrl = "www/img/lp.jpg",
-    iconWidth = 30, iconHeight = 30
+    iconUrl = "www/img/sr5.jpeg",
+    iconWidth = 50, iconHeight = 50
   ),
   jbIcon = makeIcon(
-    iconUrl = "www/img/jb.png",
-    iconWidth = 30, iconHeight = 30
+    iconUrl = "www/img/sr6.jpeg",
+    iconWidth = 50, iconHeight = 50
   )
 )
 

@@ -14,6 +14,10 @@ shinyServer(function(session, input, output) {
   reactive.values$detailsdata <- customers
   reactive.values$pivot <- NULL
   reactive.values$selectedSet <- NULL
+  
+  reactive.values$textdata <- NULL
+  reactive.values$tabledata <- NULL
+  reactive.values$chat <- data.frame(Timestamp='', Question='', Answer='')
 
   data_of_click <- reactiveValues(clickedMarker = list())
 
@@ -55,7 +59,7 @@ shinyServer(function(session, input, output) {
         label = has.cood.account[[CUSTOMER_NAME_COL]],
         layerId = has.cood.account[[CUSTOMER_UNIQUE_ID_COL]],
         options = list(riseOnHover = TRUE)
-        #clusterOptions = markerClusterOptions()
+        #,clusterOptions = markerClusterOptions()
       ) %>%
       addLegend("bottomleft",pal=pal, values=has.cood.account[[input$colorBy]], layerId = "colorLegend") %>%
       addDrawToolbar(
@@ -613,9 +617,18 @@ shinyServer(function(session, input, output) {
       return(display.table)
 
     })
+    
+    updateTabItems(session, "tabsmenu", selected = "viewSegments" )
 
-    updateTabItems(session, "tabsmenu", selected = "viewSegments")
-
+  })
+  
+  #' Set data for open ai and change to talk to data tab
+  observeEvent(input$go_to_talk_to_data, {
+    
+    reactive.values$tabledata <- display.table$x$data
+    
+    updateTabItems(session, "tabsmenu", selected = "talk_to_data" )
+    
   })
 
 
@@ -790,6 +803,7 @@ shinyServer(function(session, input, output) {
     #' update venn diagram drop downs
     updateSelectInput(session, "selection1", choices = list.files("./selections", pattern = ".RDS"))
     updateSelectInput(session, "selection2", choices = list.files("./selections", pattern = ".RDS"))
+    updateSelectInput(session, "selected_sets", choices = list.files("./selections", pattern = ".RDS"))
 
     #' do something to show that selection is saved
 
@@ -812,8 +826,8 @@ shinyServer(function(session, input, output) {
       #' set the environment df to selected selections
       temp_selection <<- rbind(selection1,selection2)
 
-      unique_sel1 <- unique(selection1[[CONTRACT_UNIQUE_ID_COL]])
-      unique_sel2 <- unique(selection2[[CONTRACT_UNIQUE_ID_COL]])
+      unique_sel1 <- unique(selection1[[CUSTOMER_UNIQUE_ID_COL]])
+      unique_sel2 <- unique(selection2[[CUSTOMER_UNIQUE_ID_COL]])
 
       only_sel1 <<- setdiff(unique_sel1, unique_sel2)
       only_sel2 <<- setdiff(unique_sel2, unique_sel1)
@@ -845,25 +859,7 @@ shinyServer(function(session, input, output) {
                            cat.dist = rep(0.025, 2),
                            scaled = FALSE,
                            print.mode = c("percent","raw"))
-
-        # draw.pairwise.venn(area1 = length(only_sel1) + length(sel1_and_sel2),
-        #                    area2 = length(only_sel2) + length(sel1_and_sel2),
-        #                    cross.area = length(sel1_and_sel2),
-        #                    category = c("Google Analytics","Adobe Analytics"),
-        #                    fill = c("#F29B05","#A1D490"),
-        #                    ext.text = TRUE,
-        #                    ext.percent = c(0.1,0.1,0.1),
-        #                    ext.length = 0.6,
-        #                    label.col = rep("gray10",3),
-        #                    lwd = 0,
-        #                    cex = 2,
-        #                    fontface = rep("bold",3),
-        #                    fontfamily = rep("sans",3),
-        #                    cat.cex = 1.5,
-        #                    cat.fontface = rep("plain",2),
-        #                    cat.fontfamily = rep("sans",2),
-        #                    cat.pos = c(0, 0),
-        #                    print.mode = c("percent","raw"))
+        
 
       })
 
@@ -921,6 +917,244 @@ shinyServer(function(session, input, output) {
 
 
   })
+  
+  
+  
+  #'########################################################################################
+  #'Upset Diagrams
+  #'
+  
+  
+  
+  observeEvent(input$draw_upset,{
+    
+    withProgress(message = "Drawing Upset diagram...",{
+      
+      selected_sets <- input$selected_sets
+      
+      sets_list = list()
+      
+      for(item in selected_sets){
+        
+        selected_dataset <- readRDS(paste0("selections/",item))
+        
+        unique_ids = unique(selected_dataset[[CUSTOMER_UNIQUE_ID_COL]])
+        
+        sets_list[[item]] = unique_ids
+        
+      }
+      
+      # render upsetjs as interactive plot
+      
+      if(input$selected_upset_chart_type == "Venn") {
+        
+        output$upset_chart <- upsetjs::renderUpsetjs({
+          upsetjs::upsetjsVennDiagram() %>%
+            upsetjs::fromList(sets_list) %>%
+            upsetjs::interactiveChart()
+        })
+        
+      }else if (input$selected_upset_chart_type == "Upset"){
+        
+        output$upset_chart <- upsetjs::renderUpsetjs({
+          upsetjs::upsetjs() %>%
+            upsetjs::fromList(sets_list) %>%
+            upsetjs::interactiveChart()
+        })
+        
+      }
+      
+      
+      
+      
+      
+    })
+    
+  })
+  
+  #'########################################################################################
+  #' talk to data
+  #'
+  
+  
+  observeEvent(input$load_csv_data,{
+    if (! is.null(input$inputFile)){
+      #' read in csv file
+      filedata <- read.csv(input$inputFile$datapath, encoding = 'UTF-8', fileEncoding = 'ISO8859-1', stringsAsFactors = FALSE)
+      
+      #' replace NA patterns with empty strings
+      filedata <- as.data.frame(lapply(filedata, function(x) gsub(x,pattern = na.patterns, replacement = "")))
+      
+      print(head(filedata))
+      
+      reactive.values$tabledata <- filedata
+      
+    }
+  })
+  
+  
+  observeEvent(input$load_pdf_data,{
+    
+    if(!is.null(input$inputPDF)){
+      
+      #' get files selected in data.object
+      filestoload <- input$inputPDF
+      filestxt <- NULL
+      numfiles <- nrow(filestoload)
+      
+      if(numfiles > 0) {
+        
+        withProgress(message = "in progress",{
+          #' loop through each file and extact text.
+          for( i in 1:numfiles) {
+            #' update message 
+            incProgress(1/numfiles, message = paste(round(100*i/numfiles,0)," % Complete"))
+            #' read text from file
+            txt <- pdftools::pdf_text(filestoload$datapath[i])
+            txt <- paste(txt, collapse = " ")
+            #' append text to files text vector
+            filestxt <- c(filestxt, txt)
+          }
+          
+        })
+        
+      }
+      
+      filedata <- data.frame(textid = seq(1:numfiles),
+                             user = filestoload$name,
+                             text = filestxt)
+      
+      reactive.values$textdata <- filedata
+      
+    }
+    
+  })
+  
+  
+  
+  output$text_table <- DT::renderDT({
+    reactive.values$textdata
+  },   
+  options = list(
+    autoWidth  = T,
+    dom = 't',
+    columnDefs = list(list(
+      targets  = 2,
+      render   = JS(
+        "function(data, type, row, meta) {",
+        "return type === 'display' && data.length > 1000 ?",                                    "'<span title=\"' + data + '\">' +
+                                data.substr(0, 1000) + '...</span>' : data;", "}"))),
+    pageLength = 1, server = T),
+    rownames= FALSE,
+    escape = FALSE
+  )
+  
+  output$data_table <- DT::renderDT({
+    reactive.values$tabledata
+  }, options = list(dom = 't', 
+                    columnDefs = list(list(width = '200px', targets = 0 )),
+                    pageLength = 10                 
+                    ),
+  rownames= FALSE,
+  escape = FALSE
+  )
+  
+  
+  
+  observeEvent(input$go,{
+    
+    withProgress(message = 'Calculation in progress',
+                 detail = 'This may take a while...', value = 0, {
+                   
+                   question <- isolate(input$question)
+                   
+                   if(input$about == 'data table') {
+                     
+                     datatable <- reactive.values$tabledata
+                     
+                     data <- rjson::toJSON(unname(split(datatable,
+                                                        1:nrow(datatable))))
+                     
+                     prompt <- glue::glue(" {question} for the following data: {data} ")
+                     
+                   }else if (input$about == 'in general'){
+                     prompt <- question
+                   }else {
+                     
+                     text <- reactive.values$textdata$text
+                     
+                     prompt <- glue::glue(" {question} for the following text: {text} ")
+                   }            
+                   
+                   response <- openai::create_chat_completion(
+                     model = "gpt-3.5-turbo",
+                     openai_api_key = Sys.getenv('APIKEY'),
+                     messages = list(
+                       list(
+                         "role" = "user",
+                         "content" = prompt
+                       )        
+                     )
+                   )
+                   
+                   chat <- reactive.values$chat
+                   
+                   print(response$choices$message.content)
+                   
+                   reponse_text <- gsub(pattern = "\n", replacement = "<br>", x = response$choices$message.content)
+                   
+                   reactive.values$chat <- rbind(chat, c(format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z") ,question, reponse_text))
+                   
+                 })
+    
+  })
+  
+  output$chat_table <- DT::renderDT({
+    reactive.values$chat
+  },  
+  options = list(dom = 't',
+                     columnDefs = list(list(width = '200px', targets = 0 )
+                    )
+                 ),
+  rownames= FALSE,
+  escape = FALSE
+  )
+  
+  
+  output$download_as_ppt <- downloadHandler(
+    filename = function() {
+      "chat.pptx"
+    },
+    content = function(file) {
+      
+      chat_df <- reactive.values$chat
+      
+      doc <- officer::read_pptx() %>%
+        add_slide(layout = "Title and Content") %>%
+        ph_with(isolate(reactive.values$tabledata), location = ph_location_type(type = "body") )
+      
+      
+      for (row in 2:nrow(chat_df)) {
+        
+        question <- chat_df[row, 'Question']
+        answer <- chat_df[row, 'Answer']
+        
+        print(glue::glue("QUESTION: {question} ANSWER {answer}"))
+        
+        doc <- officer::add_slide(doc, layout = "Title and Content") %>% 
+          officer::ph_with(question, location = officer::ph_location_type(type = "title") ) %>%
+          officer::ph_with(answer, location = officer::ph_location_type(type = "body") )
+        
+      }
+      
+      
+      
+      print(doc, target = "data/output/chat.pptx")
+      
+      file.copy(file.path('data/output/chat.pptx'), file)
+    }
+  )
+  
 
 
 })
