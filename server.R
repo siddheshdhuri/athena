@@ -985,8 +985,6 @@ shinyServer(function(session, input, output) {
       #' replace NA patterns with empty strings
       filedata <- as.data.frame(lapply(filedata, function(x) gsub(x,pattern = na.patterns, replacement = "")))
       
-      print(head(filedata))
-      
       reactive.values$tabledata <- filedata
       
     }
@@ -1063,7 +1061,7 @@ shinyServer(function(session, input, output) {
   
   observeEvent(input$go,{
     
-    withProgress(message = 'Calculation in progress',
+    withProgress(message = 'Working on it',
                  detail = 'This may take a while...', value = 0, {
                    
                    question <- isolate(input$question)
@@ -1130,24 +1128,25 @@ shinyServer(function(session, input, output) {
       chat_df <- reactive.values$chat
       
       doc <- officer::read_pptx() %>%
-        add_slide(layout = "Title and Content") %>%
-        ph_with(isolate(reactive.values$tabledata), location = ph_location_type(type = "body") )
-      
+        officer::add_slide(layout = "Title and Content") %>%
+        officer::ph_with(isolate(reactive.values$tabledata), 
+                         location = officer::ph_location_type(type = "body") )
+       
       
       for (row in 2:nrow(chat_df)) {
         
         question <- chat_df[row, 'Question']
         answer <- chat_df[row, 'Answer']
         
-        print(glue::glue("QUESTION: {question} ANSWER {answer}"))
-        
         doc <- officer::add_slide(doc, layout = "Title and Content") %>% 
           officer::ph_with(question, location = officer::ph_location_type(type = "title") ) %>%
           officer::ph_with(answer, location = officer::ph_location_type(type = "body") )
         
+        
+        
       }
       
-      
+      dir.create('data/output', mode = "0775", showWarnings = FALSE)
       
       print(doc, target = "data/output/chat.pptx")
       

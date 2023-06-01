@@ -358,19 +358,24 @@ dashboardPage(
                 ),
                 
                 
+                box(
+                  
+                  radioButtons(
+                    inputId = "about",
+                    label = "About: ",
+                    choices = c("data table", "text file", "in general"), inline=TRUE
+                  ),
+                  
+                  textAreaInput("question", "Ask me anything"),  
+                  
+                  actionButton("go", "Go"),
+                  
+                  DT::dataTableOutput("chat_table"),
+                  downloadButton("download_as_ppt", "Download")
+                  
+                )
                 
-                textInput("question", "Ask me anything"),  
-                radioButtons(
-                  inputId = "about",
-                  label = "About: ",
-                  choices = c("data table", "text file", "in general"), inline=TRUE
-                ),
-                actionButton("go", "Go"),
                 
-                tableOutput("head"),
-                textOutput("prompt"),
-                DT::dataTableOutput("chat_table"),
-                downloadButton("download_as_ppt", "Download")
               )
       )
       
