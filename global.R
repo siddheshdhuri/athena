@@ -15,6 +15,10 @@ library(heatmaply)
 library(maputils)
 library(crosstabutils)
 
+library(officer)
+library(knitr)
+library(flextable)
+
 
 tol21rainbow= c("#771155", "#CC99BB", "#AA4488", "#771122", "#AA4455", "#774411", "#DD7788", "#AA7744", "#DDAA77", 
                 "#88CCAA", "#777711", "#AAAA44", "#DDDD77", "#114477", "#4477AA", "#77AADD", "#117777", "#44AAAA", 

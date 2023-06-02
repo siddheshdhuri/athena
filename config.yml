@@ -75,6 +75,9 @@ default:
                       'NUMBEROFEMPLOYEES', 'ANNUALREVENUE']
   
   
+  OPENAI_MAX_TOKENS: 4096
+  
+  
 production:
   trials: 30
   dataset: "data.csv"

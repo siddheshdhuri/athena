@@ -18,12 +18,149 @@ shinyServer(function(session, input, output) {
   reactive.values$textdata <- NULL
   reactive.values$tabledata <- NULL
   reactive.values$chat <- data.frame(Timestamp='', Question='', Answer='')
+  reactive.values$username <- NULL
 
   data_of_click <- reactiveValues(clickedMarker = list())
 
 
   coordinates_df <- NULL
 
+  
+  
+  ############################## - START SIGN IN MODULE - #############################
+  
+  observe({
+    
+    if (is.empty(reactive.values$username)) {
+      
+      shiny::showModal(
+        modalDialog(
+          fluidPage(
+            textInput("email", label="Email"),
+            passwordInput("password", label="Password"),
+            actionButton("loginButton", "Login"),
+            actionButton("signupButton", "Sign Up"),
+            uiOutput("loginModalMessage")
+          ),
+          easyClose = FALSE, 
+          footer=NULL,
+          size='m',
+        )
+      )
+    }
+    
+  })
+  
+  # LOGIN
+  observeEvent(input$loginButton, {
+    authEmail <- input$email
+    authPassword <- input$password
+    
+    url <- glue::glue("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={Sys.getenv('FIREBASE_API_KEY')}")
+    
+    response <-
+      httr::POST(
+        url,
+        body = list(
+          email = toString(authEmail),
+          password = toString(authPassword),
+          returnSecureToken = TRUE
+        ),
+        encode = "json"
+      )
+    
+    status <- httr::http_status(response)$category
+    body <- httr::content(response, as = "parsed")
+    
+    
+    if (status == 'Success') {
+      reactive.values$username <- body$email
+      print("SETTING COOKIE")
+      tryCatch({
+        # try to set cookie
+        js$setcookie("username",body$email)
+        print(js$getcookie("username"))
+      }, error = function(e) {
+        print(paste("Error while setting cookie", e))
+      })
+      
+      
+      removeModal()
+      
+    } else {
+      output$loginModalMessage <- renderUI(p(body$error$message, style="color:red"))
+    }
+    
+  })
+  
+  # LOGOUT
+  observeEvent(input$logoutButton, {
+    
+    if( exists('js') ) {
+      js$rmcookie("username")
+    }
+    
+    reactive.values$username <- NULL
+    
+    #' Reset user info.
+    reactive.values$interaction_network_nodes = NULL
+    reactive.values$user_home_geos = data.frame(lng=numeric(), lat=numeric(), radius=numeric(), id=numeric())
+    reactive.values$selected_home_geo = NULL
+    
+  })
+  
+  
+  
+  # SIGNUP
+  observeEvent(input$signupButton, {
+    
+    if(TRUE){ #We set to TRUE for beta phase to avoid self signup
+      
+      shiny::showModal(
+        modalDialog(
+          HTML('Hello thanks for your interest. </br> 
+               During our beta release access to SiMPL application is through invitation only. </br> 
+               Please write to <a href="mailto:sid@orox.ai">Sid Dhuri</a> with your usecase to request a login and we will comeback with your access details')
+          ,
+          easyClose = FALSE,
+          footer=NULL,
+          size='m'
+        )
+      )
+      
+    }else{
+      authEmail <- input$email
+      authPassword <- input$password
+      response <-
+        httr::POST(
+          paste0("https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=",API_KEY),
+          
+          body = list(
+            email = toString(authEmail),
+            password = toString(authPassword),
+            returnSecureToken = TRUE
+          ),
+          
+          encode = "json"
+        )
+      status <- httr::http_status(response)$category
+      
+      if (status == 'Success') {
+        reactive.values$username <- authEmail
+        removeModal()
+        
+      } else {
+        body <- content(response, as = "parsed")
+        output$loginModalMessage <- renderUI(p(body$error$message, style="color:red"))
+      }
+    }
+    
+  })
+  
+  ############################## - END SIGN IN MODULE - #############################
+  
+  
+  
 
   ############################## - Start Customer Map - #############################
   #' Map
@@ -1029,7 +1166,6 @@ shinyServer(function(session, input, output) {
   })
   
   
-  
   output$text_table <- DT::renderDT({
     reactive.values$textdata
   },   
@@ -1049,13 +1185,14 @@ shinyServer(function(session, input, output) {
   
   output$data_table <- DT::renderDT({
     reactive.values$tabledata
-  }, options = list(dom = 't', 
+  }, options = list(dom = 'tp', 
                     columnDefs = list(list(width = '200px', targets = 0 )),
                     pageLength = 10                 
                     ),
   rownames= FALSE,
   escape = FALSE
   )
+  
   
   
   
@@ -1066,7 +1203,7 @@ shinyServer(function(session, input, output) {
                    
                    question <- isolate(input$question)
                    
-                   if(input$about == 'data table') {
+                   if(input$talk_to_data_about_radio_buttons == 'data table') {
                      
                      datatable <- reactive.values$tabledata
                      
@@ -1075,14 +1212,20 @@ shinyServer(function(session, input, output) {
                      
                      prompt <- glue::glue(" {question} for the following data: {data} ")
                      
-                   }else if (input$about == 'in general'){
+                   }else if (input$talk_to_data_about_radio_buttons == 'in general'){
                      prompt <- question
                    }else {
                      
                      text <- reactive.values$textdata$text
                      
                      prompt <- glue::glue(" {question} for the following text: {text} ")
-                   }            
+                   } 
+                   
+                   
+                   if(quanteda::ntoken(prompt) > OPENAI_MAX_TOKENS)  {
+                     shinyalert::shinyalert("Please use smaller data as max size of input is 4096 token")
+                     return()
+                   }
                    
                    response <- openai::create_chat_completion(
                      model = "gpt-3.5-turbo",
@@ -1108,6 +1251,9 @@ shinyServer(function(session, input, output) {
   })
   
   output$chat_table <- DT::renderDT({
+    
+    if(nrow(reactive.values$chat) < 2) return()
+    
     reactive.values$chat
   },  
   options = list(dom = 't',
@@ -1127,10 +1273,14 @@ shinyServer(function(session, input, output) {
       
       chat_df <- reactive.values$chat
       
+      ft <- flextable::flextable(isolate(reactive.values$tabledata)) %>%
+            flextable::theme_booktabs() %>%
+            flextable::autofit() %>%
+            fontsize(size = 8)
+      
       doc <- officer::read_pptx() %>%
         officer::add_slide(layout = "Title and Content") %>%
-        officer::ph_with(isolate(reactive.values$tabledata), 
-                         location = officer::ph_location_type(type = "body") )
+        officer::ph_with(ft, location = officer::ph_location_type(type = "body") )
        
       
       for (row in 2:nrow(chat_df)) {
@@ -1154,6 +1304,21 @@ shinyServer(function(session, input, output) {
     }
   )
   
+  
+  #' Update radio button based on selected tab
+  observe({
+    
+    if(input$talk_to_data_tabs == "Load data from CSV"){
+      updateRadioButtons(session, "talk_to_data_about_radio_buttons",
+                         selected = "data table")
+    }else if(input$talk_to_data_tabs == "Load data from PDF"){
+      updateRadioButtons(session, "talk_to_data_about_radio_buttons",
+                         selected = "text file")
+    }
+    
+    
+    
+  })
 
 
 })

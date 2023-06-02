@@ -91,13 +91,13 @@ dashboardPage(
              downloadButton("exportDetails", "Export details")
     ),
     
-    menuItem("Talk to data", icon=icon("android"), tabName = "talk_to_data"),
+    menuItem("Talk to data", icon=icon("android"), tabName = "talk_to_data")
     
-    tags$br(),
-    tags$br(),
-    
-    textAreaInput("searchTerm", label = "Find by name"),
-    actionButton("filterByName", label = "Find")
+    # tags$br(),
+    # tags$br(),
+    # 
+    # textAreaInput("searchTerm", label = "Find by name"),
+    # actionButton("filterByName", label = "Find")
     
     )
     # menuItem("Search account name",
@@ -113,7 +113,8 @@ dashboardPage(
                          width:100%;
                          padding:0px;
                          margin:0px;
-                         }" )),
+                         }
+                         " )),
     
     tabItems(
       
@@ -313,47 +314,53 @@ dashboardPage(
       ),
       
       tabItem("talk_to_data",
-              
+              shinyalert::useShinyalert(),  # Set up shinyalert
               fluidRow(
                 
                 tabBox(
                   width = 12, 
                   
-                  tabPanel("Load data from CSV", 
-                           fluidRow(
-                             column(4,
-                                    fileInput('inputFile', 'Choose CSV File', 
-                                              accept=c('text/csv', 
-                                                       'text/comma-separated-values,text/plain', 
-                                                       '.csv'))
-                             ),
-                             column(1, actionButton("load_csv_data", "Load Data"))
-                           ),
-                           fluidRow(
-                             box(id = "data_table_box",
-                              DT::dataTableOutput("data_table"),
-                              collapsible = TRUE
-                             )
-                           )
-                           
-                  ),
-                  tabPanel("Load data from PDF",
-                           
-                           fluidRow(
-                             column(4,
-                                    fileInput('inputPDF', 'Choose PDF File', multiple = TRUE)
-                             ),
-                             column(1, actionButton("load_pdf_data", "Load Data"))
-                           ),
-                           fluidRow(
-                             box(id = "text_table_box",
-                                 DT::dataTableOutput("text_table"),
-                                 collapsible = TRUE
-                             )
-                             
-                           )
-                           
+                  tabsetPanel(id="talk_to_data_tabs",
+                  
+                      tabPanel("Load data from CSV", 
+                               fluidRow(
+                                 column(4,
+                                        fileInput('inputFile', 'Choose CSV File', 
+                                                  accept=c('text/csv', 
+                                                           'text/comma-separated-values,text/plain', 
+                                                           '.csv'))
+                                 ),
+                                 column(1, actionButton("load_csv_data", "Load Data"))
+                               ),
+                               fluidRow(
+                                 box(id = "data_table_box",
+                                     DT::dataTableOutput("data_table"),
+                                     collapsible = TRUE
+                                 )
+                               )
+                               
+                      ),
+                      tabPanel("Load data from PDF",
+                               
+                               fluidRow(
+                                 column(4,
+                                        fileInput('inputPDF', 'Choose PDF File', multiple = TRUE)
+                                 ),
+                                 column(1, actionButton("load_pdf_data", "Load Data"))
+                               ),
+                               fluidRow(
+                                 box(id = "text_table_box",
+                                     DT::dataTableOutput("text_table"),
+                                     collapsible = TRUE
+                                 )
+                                 
+                               )
+                               
+                      )      
+                                          
                   )
+                  
+                  
                   
                 ),
                 
@@ -361,7 +368,7 @@ dashboardPage(
                 box(
                   
                   radioButtons(
-                    inputId = "about",
+                    inputId = "talk_to_data_about_radio_buttons",
                     label = "About: ",
                     choices = c("data table", "text file", "in general"), inline=TRUE
                   ),
